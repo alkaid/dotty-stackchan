@@ -22,7 +22,11 @@ ignore = [
 [tool.coverage.run]
 # Only measure first-party Python — exclude tests, scripts, firmware,
 # and the dotty-pi-ext Node project.
-source = ["bridge", "custom-providers/pi_voice"]
+source = [
+    "bridge",
+    "custom-providers/pi_voice",
+    "custom-providers/tier1_slim",
+]
 omit = [
     "*/tests/*",
     "*/__init__.py",
