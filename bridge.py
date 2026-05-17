@@ -35,6 +35,16 @@ from textUtils import (
     build_turn_suffix,
 )
 
+from bridge.text import (
+    CONTENT_FILTER_REPLACEMENT,
+    MAX_SENTENCES,
+    clean_for_tts,
+    content_filter,
+    ensure_emoji_prefix,
+    strip_extra_emojis,
+    truncate_sentences,
+)
+
 # Observability — every metric call is wrapped in `_safe_metric(...)` so a
 # bug in metrics wiring can NEVER break the request path. The metrics
 # module also degrades to no-ops if prometheus_client is unavailable.
@@ -49,7 +59,6 @@ try:
     from bridge.metrics import (
         dotty_active_acp_sessions,
         dotty_calendar_fetch_failures_total,
-        dotty_content_filter_hits_total,
         dotty_kid_mode_active,
         dotty_perception_events_total,
         dotty_request_duration_seconds,
@@ -88,7 +97,6 @@ STOP_TIMEOUT_SEC = 2.0
 SESSION_IDLE_TIMEOUT_SEC = float(os.environ.get("ZEROCLAW_SESSION_IDLE", "300"))
 SESSION_MAX_TURNS = int(os.environ.get("ZEROCLAW_SESSION_MAX_TURNS", "50"))
 SESSION_MAX_AGE_SEC = float(os.environ.get("ZEROCLAW_SESSION_MAX_AGE_SEC", "1800"))
-MAX_SENTENCES = int(os.environ.get("MAX_SENTENCES", "6"))
 _KID_STATE_FILE = Path(
     os.environ.get("DOTTY_KID_MODE_STATE", "/root/zeroclaw-bridge/state/kid-mode")
 )
@@ -1555,114 +1563,6 @@ class ACPClient:
 
 
 acp = ACPClient()
-
-
-def _ensure_emoji_prefix(text: str) -> str:
-    if not text:
-        return f"{FALLBACK_EMOJI} (no response)"
-    stripped = text.lstrip()
-    if any(stripped.startswith(e) for e in ALLOWED_EMOJIS):
-        return text
-    return f"{FALLBACK_EMOJI} {text}"
-
-
-_TTS_STRIP_RE = re.compile("[‍️*#>]")
-_EXTRA_EMOJI_RE = re.compile(
-    "[\U0001F300-\U0001FAFF"
-    "\U00002600-\U000027BF"
-    "\U0001F000-\U0001F0FF"
-    "\U0001F100-\U0001F1FF]"
-)
-
-
-def _clean_for_tts(text: str) -> str:
-    """Strip characters that TTS engines read literally or can't render."""
-    return _TTS_STRIP_RE.sub("", text)
-
-
-def _strip_extra_emojis(text: str) -> str:
-    """Keep only the leading allowed emoji; remove all other emoji characters.
-
-    The model is instructed to use exactly one emoji from ALLOWED_EMOJIS as the
-    first character. In practice it sprinkles decorative emojis through the
-    response. Those are wasted tokens, clutter the logs, and risk Piper reading
-    them aloud. This is the safety net.
-    """
-    if not text:
-        return text
-    ws_len = len(text) - len(text.lstrip())
-    stripped = text[ws_len:]
-    for e in ALLOWED_EMOJIS:
-        if stripped.startswith(e):
-            head = text[: ws_len + len(e)]
-            body = text[ws_len + len(e):]
-            return head + _EXTRA_EMOJI_RE.sub("", body)
-    return _EXTRA_EMOJI_RE.sub("", text)
-
-
-def _truncate_sentences(text: str, max_sentences: int = MAX_SENTENCES) -> str:
-    count = 0
-    for i, ch in enumerate(text):
-        if ch in '.!?':
-            count += 1
-            if count >= max_sentences:
-                return text[:i + 1]
-    return text
-
-
-# Content-filter severity tiers — all tiers return the same kid-safe replacement
-# so no information is leaked about WHY the filter fired. Tier affects logging
-# level and the Prometheus counter label, enabling different alert thresholds:
-#
-#   redirect — common profanity / slurs             → log.warning
-#   log      — explicit sexual / graphic violence   → log.warning
-#   alert    — hard drugs                           → log.error  (alert on this label)
-_CF_TIER_REDIRECT_RE = re.compile(
-    r"\b(fuck\w*|shit\w*|bitch\w*|bastard|cunt|nigger|nigga|faggot|retard(?:ed)?)\b",
-    re.IGNORECASE,
-)
-_CF_TIER_LOG_RE = re.compile(
-    r"\b(penis|vagina|orgasm|porn\w*|hentai|decapitat\w*|dismember\w*|mutilat\w*)\b",
-    re.IGNORECASE,
-)
-_CF_TIER_ALERT_RE = re.compile(
-    r"\b(cocaine|heroin|methamphetamine|fentanyl|ecstasy)\b",
-    re.IGNORECASE,
-)
-
-_CONTENT_FILTER_REPLACEMENT = (
-    f"{FALLBACK_EMOJI} Let's talk about something fun instead! "
-    "What's your favorite animal?"
-)
-
-# Ordered highest-severity first so the most serious match wins when multiple
-# tiers could fire on the same text.
-_CF_TIERS: list[tuple[re.Pattern, str, int]] = [
-    (_CF_TIER_ALERT_RE, "alert", logging.ERROR),
-    (_CF_TIER_LOG_RE, "log", logging.WARNING),
-    (_CF_TIER_REDIRECT_RE, "redirect", logging.WARNING),
-]
-
-
-def _content_filter(text: str) -> str | None:
-    """Return a safe replacement if blocked content is found, else None.
-
-    Checks three severity tiers. The kid-facing replacement is identical for
-    all tiers; only log level and the Prometheus tier label differ, letting
-    operators alert on ``tier="alert"`` without noising up lower-tier counts.
-    """
-    for pattern, tier, level in _CF_TIERS:
-        match = pattern.search(text)
-        if match:
-            log.log(
-                level,
-                "content-filter-hit tier=%s pattern=%r pos=%d len=%d",
-                tier, match.group(), match.start(), len(text),
-            )
-            if _METRICS_AVAILABLE:
-                _safe_metric(dotty_content_filter_hits_total.labels(tier=tier).inc)
-            return _CONTENT_FILTER_REPLACEMENT
-    return None
 
 
 class _ConvoLogger:
@@ -4932,9 +4832,9 @@ async def message(payload: MessageIn) -> MessageOut:
             ),
             timeout=REQUEST_TIMEOUT_SEC,
         )
-        raw = _clean_for_tts(_ensure_emoji_prefix(_content_filter(raw) or raw))
-        raw = _strip_extra_emojis(raw)
-        answer = _truncate_sentences(raw)
+        raw = clean_for_tts(ensure_emoji_prefix(content_filter(raw) or raw))
+        raw = strip_extra_emojis(raw)
+        answer = truncate_sentences(raw)
     except asyncio.TimeoutError:
         log.warning("ACP timeout")
         answer = f"{FALLBACK_EMOJI} I'm thinking too slowly right now, try again."
@@ -5627,12 +5527,12 @@ async def message_stream(payload: MessageIn) -> StreamingResponse:
     }
 
     async def on_chunk(content: str) -> None:
-        content = _clean_for_tts(content)
+        content = clean_for_tts(content)
         if not content:
             return
         if state["blocked"] or state["truncated"]:
             return
-        replacement = _content_filter(content)
+        replacement = content_filter(content)
         if replacement:
             log.warning("content-filter-hit-stream chunk_len=%d", len(content))
             state["blocked"] = True
@@ -5687,17 +5587,17 @@ async def message_stream(payload: MessageIn) -> StreamingResponse:
                 ),
                 timeout=REQUEST_TIMEOUT_SEC,
             )
-            full = _clean_for_tts(full)
+            full = clean_for_tts(full)
             if not state["blocked"]:
-                final_hit = _content_filter(full)
+                final_hit = content_filter(full)
                 if final_hit is not None:
                     full = final_hit
                     state["blocked"] = True
             if state["blocked"]:
-                full = _CONTENT_FILTER_REPLACEMENT
-            full = _ensure_emoji_prefix(full)
-            full = _strip_extra_emojis(full)
-            full = _truncate_sentences(full)
+                full = CONTENT_FILTER_REPLACEMENT
+            full = ensure_emoji_prefix(full)
+            full = strip_extra_emojis(full)
+            full = truncate_sentences(full)
             if not state["seen_nonws"]:
                 await queue.put(("chunk", full))
             await queue.put(("final", full))

@@ -1,0 +1,148 @@
+"""Text post-processing for voice + chat responses.
+
+Five small functions that sit between the LLM raw output and the TTS /
+channel surface:
+
+- ``ensure_emoji_prefix`` — guarantees the response starts with an allowed
+  emoji so the firmware emotion dispatch always has a face animation.
+- ``clean_for_tts`` — strips characters TTS reads literally or can't render.
+- ``strip_extra_emojis`` — keeps only the leading allowed emoji.
+- ``truncate_sentences`` — caps response length to ``MAX_SENTENCES``.
+- ``content_filter`` — kid-safe replacement when blocked content is
+  detected; three severity tiers for metrics/logging differentiation.
+"""
+import logging
+import os
+import re
+import sys
+from pathlib import Path
+
+# Defensive sibling-import shim so this module is standalone-importable
+# (e.g. from a test) without bridge.py running first.
+_TEXTUTILS_DIR = str(Path(__file__).parent.parent / "custom-providers")
+if _TEXTUTILS_DIR not in sys.path:
+    sys.path.insert(0, _TEXTUTILS_DIR)
+
+from textUtils import ALLOWED_EMOJIS, FALLBACK_EMOJI  # noqa: E402
+
+try:
+    from bridge.metrics import dotty_content_filter_hits_total
+except Exception:
+    dotty_content_filter_hits_total = None  # type: ignore[assignment]
+
+log = logging.getLogger("bridge.text")
+
+MAX_SENTENCES = int(os.environ.get("MAX_SENTENCES", "6"))
+
+
+def ensure_emoji_prefix(text: str) -> str:
+    if not text:
+        return f"{FALLBACK_EMOJI} (no response)"
+    stripped = text.lstrip()
+    if any(stripped.startswith(e) for e in ALLOWED_EMOJIS):
+        return text
+    return f"{FALLBACK_EMOJI} {text}"
+
+
+_TTS_STRIP_RE = re.compile("[‍️*#>]")
+_EXTRA_EMOJI_RE = re.compile(
+    "[\U0001F300-\U0001FAFF"
+    "\U00002600-\U000027BF"
+    "\U0001F000-\U0001F0FF"
+    "\U0001F100-\U0001F1FF]"
+)
+
+
+def clean_for_tts(text: str) -> str:
+    """Strip characters that TTS engines read literally or can't render."""
+    return _TTS_STRIP_RE.sub("", text)
+
+
+def strip_extra_emojis(text: str) -> str:
+    """Keep only the leading allowed emoji; remove all other emoji characters.
+
+    The model is instructed to use exactly one emoji from ALLOWED_EMOJIS as the
+    first character. In practice it sprinkles decorative emojis through the
+    response. Those are wasted tokens, clutter the logs, and risk Piper reading
+    them aloud. This is the safety net.
+    """
+    if not text:
+        return text
+    ws_len = len(text) - len(text.lstrip())
+    stripped = text[ws_len:]
+    for e in ALLOWED_EMOJIS:
+        if stripped.startswith(e):
+            head = text[: ws_len + len(e)]
+            body = text[ws_len + len(e):]
+            return head + _EXTRA_EMOJI_RE.sub("", body)
+    return _EXTRA_EMOJI_RE.sub("", text)
+
+
+def truncate_sentences(text: str, max_sentences: int = MAX_SENTENCES) -> str:
+    count = 0
+    for i, ch in enumerate(text):
+        if ch in '.!?':
+            count += 1
+            if count >= max_sentences:
+                return text[:i + 1]
+    return text
+
+
+# Content-filter severity tiers — all tiers return the same kid-safe
+# replacement so no information is leaked about WHY the filter fired. Tier
+# affects logging level and the Prometheus counter label, enabling
+# different alert thresholds:
+#
+#   redirect — common profanity / slurs             → log.warning
+#   log      — explicit sexual / graphic violence   → log.warning
+#   alert    — hard drugs                           → log.error  (alert on this label)
+_CF_TIER_REDIRECT_RE = re.compile(
+    r"\b(fuck\w*|shit\w*|bitch\w*|bastard|cunt|nigger|nigga|faggot|retard(?:ed)?)\b",
+    re.IGNORECASE,
+)
+_CF_TIER_LOG_RE = re.compile(
+    r"\b(penis|vagina|orgasm|porn\w*|hentai|decapitat\w*|dismember\w*|mutilat\w*)\b",
+    re.IGNORECASE,
+)
+_CF_TIER_ALERT_RE = re.compile(
+    r"\b(cocaine|heroin|methamphetamine|fentanyl|ecstasy)\b",
+    re.IGNORECASE,
+)
+
+CONTENT_FILTER_REPLACEMENT = (
+    f"{FALLBACK_EMOJI} Let's talk about something fun instead! "
+    "What's your favorite animal?"
+)
+
+# Ordered highest-severity first so the most serious match wins when
+# multiple tiers could fire on the same text.
+_CF_TIERS: list[tuple[re.Pattern, str, int]] = [
+    (_CF_TIER_ALERT_RE, "alert", logging.ERROR),
+    (_CF_TIER_LOG_RE, "log", logging.WARNING),
+    (_CF_TIER_REDIRECT_RE, "redirect", logging.WARNING),
+]
+
+
+def content_filter(text: str) -> str | None:
+    """Return a safe replacement if blocked content is found, else None.
+
+    Checks three severity tiers. The kid-facing replacement is identical
+    for all tiers; only log level and the Prometheus tier label differ,
+    letting operators alert on ``tier="alert"`` without noising up
+    lower-tier counts.
+    """
+    for pattern, tier, level in _CF_TIERS:
+        match = pattern.search(text)
+        if match:
+            log.log(
+                level,
+                "content-filter-hit tier=%s pattern=%r pos=%d len=%d",
+                tier, match.group(), match.start(), len(text),
+            )
+            if dotty_content_filter_hits_total is not None:
+                try:
+                    dotty_content_filter_hits_total.labels(tier=tier).inc()
+                except Exception:
+                    pass
+            return CONTENT_FILTER_REPLACEMENT
+    return None
