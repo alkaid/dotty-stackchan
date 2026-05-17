@@ -1,0 +1,9 @@
+node_modules/
+*.db
+*.db-shm
+*.db-wal
+*.tsbuildinfo
+
+# Override repo-root .gitignore — extension has native deps (better-sqlite3)
+# where build reproducibility on Unraid needs the lock file in git.
+!package-lock.json
