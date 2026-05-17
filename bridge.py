@@ -308,7 +308,7 @@ DOTTY_VOICE_PROVIDER = os.environ.get("DOTTY_VOICE_PROVIDER", "zeroclaw").strip(
 # the OpenAI-compat /v1 suffix. Defaults match data/.config.yaml on the
 # live xiaozhi-server.
 TIER1SLIM_LOCAL_URL = os.environ.get(
-    "TIER1SLIM_LOCAL_URL", "http://192.168.1.67:8080/v1",
+    "TIER1SLIM_LOCAL_URL", "http://localhost:8080/v1",
 )
 TIER1SLIM_LOCAL_API_KEY = os.environ.get("TIER1SLIM_LOCAL_API_KEY", "dotty-voice")
 TIER1SLIM_LOCAL_MODEL = os.environ.get("TIER1SLIM_LOCAL_MODEL", "qwen3.5:4b")
@@ -3535,8 +3535,7 @@ async def vision_explain(
             # gates because the bridge sees photos that the xiaozhi side
             # never spawned. Listening included so a wake-word turn that
             # opens the mic before state has fully transitioned still
-            # gates correctly. See dotty-private tasks.md "Talk-active
-            # gate for room-view + face-recognition".
+            # gates correctly.
             current_state = (state.get("current_state") or "idle").lower()
             listening = bool(state.get("listening"))
             last_state_change_t = state.get("last_state_change_t", 0.0)
@@ -3901,7 +3900,7 @@ _VOICE_MEMORY_DB = Path(os.environ.get(
     "VOICE_MEMORY_DB", "/root/.zeroclaw/workspace/memory/brain.db",
 ))
 _VOICE_THINKER_URL = os.environ.get(
-    "VOICE_THINKER_URL", "http://192.168.1.67:8080/v1/chat/completions",
+    "VOICE_THINKER_URL", "http://localhost:8080/v1/chat/completions",
 )
 _VOICE_THINKER_MODEL = os.environ.get("VOICE_THINKER_MODEL", "qwen3.6:27b-think")
 _VOICE_THINKER_TIMEOUT = float(os.environ.get("VOICE_THINKER_TIMEOUT", "30"))

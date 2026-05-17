@@ -128,9 +128,7 @@ class EventTextMessageHandler(TextMessageHandler):
                 # very event drives. Subsequent flicker events arrive
                 # after state has become "talk", and re-running room_view
                 # there can broadcast a fresh face_recognized that fires
-                # a stacked "Hi NAME" mid-turn. See dotty-private
-                # tasks.md "Talk-active gate for room-view + face-
-                # recognition" entry for the full audit.
+                # a stacked "Hi NAME" mid-turn.
                 cstate = (getattr(conn, "current_state", "") or "").lower()
                 if cstate == "talk":
                     conn.logger.bind(tag=TAG).debug(

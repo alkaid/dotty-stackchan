@@ -15,7 +15,7 @@ Talks directly to llama-swap (or any OpenAI-compatible endpoint) with a small
 If no tool_calls are emitted, the first response.content is yielded directly
 (single-call fast path, ~500 ms warm).
 
-The bridge URL comes from env var BRIDGE_URL (default http://192.168.1.54:8080).
+The bridge URL comes from env var BRIDGE_URL (default http://localhost:8080).
 """
 
 import json
@@ -38,7 +38,7 @@ logger = setup_logging()
 KID_MODE = os.environ.get("DOTTY_KID_MODE", "true").lower() in ("1", "true", "yes")
 _TURN_SUFFIX = build_turn_suffix(KID_MODE)
 
-BRIDGE_URL = os.environ.get("BRIDGE_URL", "http://192.168.1.54:8080").rstrip("/")
+BRIDGE_URL = os.environ.get("BRIDGE_URL", "http://localhost:8080").rstrip("/")
 BRIDGE_TIMEOUT_SHORT = float(os.environ.get("BRIDGE_TIMEOUT_SHORT", "5"))   # memory_lookup
 BRIDGE_TIMEOUT_LONG = float(os.environ.get("BRIDGE_TIMEOUT_LONG", "30"))    # think_hard
 
