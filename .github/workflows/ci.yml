@@ -86,7 +86,7 @@ jobs:
         # floor; lower the gate only when intentionally removing tests.
         run: |
           pytest tests/ custom-providers/pi_voice/tests/ -v --tb=short \
-            --cov --cov-report=term --cov-fail-under=55
+            --cov --cov-report=term --cov-fail-under=56
 
   pi-ext-tests:
     name: dotty-pi-ext TS Tests
