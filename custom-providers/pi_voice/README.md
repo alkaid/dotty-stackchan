@@ -4,10 +4,31 @@ xiaozhi-server custom LLM provider that routes voice turns through the
 [`dotty-pi`](../../dotty-pi/) container instead of bridge.py. The
 RPi-replacement path per [#36](https://github.com/BrettKinny/dotty-stackchan/issues/36).
 
-**Status: skeleton.** Not yet wired into xiaozhi-server's
-`selected_module:` config. The legacy provider (`zeroclaw`) and the
-Tier1Slim provider (`tier1_slim`) remain the production paths until
-this is built out and soaked.
+**Status: skeleton with working PiClient + LLMProvider, 6/6 unit tests
+passing.** Not yet wired into xiaozhi-server's `selected_module:` config.
+The legacy provider (`zeroclaw`) and the Tier1Slim provider (`tier1_slim`)
+remain the production paths until this is soaked.
+
+What works:
+- `pi_client.py` — long-lived `pi --mode rpc` client; spawns once,
+  reuses across turns via `new_session`. Filters `thinking_delta`,
+  auto-cancels dialog `extension_ui_request`s, drops fire-and-forget
+  UI requests. Throws `PiClientError` on rejected prompts / timeouts.
+- `pi_voice.py` — `LLMProvider` subclass that translates xiaozhi's
+  `(session_id, dialogue)` → pi prompt and yields text deltas back as
+  a sync generator (the shape xiaozhi's voice loop expects).
+- `tests/test_pi_client.py` — pure-Python unit tests with a fake
+  subprocess for the 3 Step-5 invariants + prompt-rejection +
+  timeout. Run with `python3 -m unittest custom-providers.pi_voice.tests.test_pi_client`.
+
+What's not yet done (the live-integration items):
+- Volume-mounting this dir into the xiaozhi container.
+- Flipping `selected_module.LLM: PiVoiceLLM` and soaking.
+- Sandwich enforcement (Tier1Slim wraps every turn with
+  `build_turn_suffix(KID_MODE)` from `core.utils.textUtils`; needs
+  porting either here or into the pi extension's system prompt).
+- Memory write-back from xiaozhi-server (Tier1Slim posts conversation
+  logs + remember-markers; PiVoiceLLM currently ignores those).
 
 ## Architecture
 
@@ -75,31 +96,49 @@ LLM:
   PiVoiceLLM:
     type: pi_voice
     container_name: dotty-pi
-    model: qwen3.6:27b
-    extension: dotty-pi-ext
 ```
+
+The model + extension wiring lives container-side (in `dotty-pi/models.json`
+and the bind-mounted `dotty-pi-ext/`); xiaozhi-server doesn't need to know
+about them. The container default is `qwen3.5:4b` outer + `qwen3.6:27b-think`
+escalation per `dotty-pi/README.md` — using `qwen3.6:27b` here would evict
+the voice matrix set, see that README's "Model selection" section.
 
 Existing `DOTTY_VOICE_PROVIDER=pi` env-var contract on the bridge will
 become the soak-toggle: when the xiaozhi-server side is on `PiVoiceLLM`
 and the bridge is still up, the bridge becomes a no-op pass-through;
 once soaked, bridge.py goes away entirely.
 
-## Open questions for the implementation pass
+## Open questions resolved during this slice
 
-1. **Stream shape.** xiaozhi's `chat_stream` expects `{type: "content",
-   content: <chunk>}` dicts. Pi's `assistantMessageEvent` shape needs
-   adapting; figure out the exact mapping before committing.
-2. **Tool-call surfacing.** Tool results currently come back as part of
-   the assistant's final message in pi's flow. xiaozhi's TTS gate may
-   need `tool_call` vs `content` distinction — verify against tier1_slim
-   to see how it handles the same case.
-3. **Sandwich enforcement.** Tier1Slim wraps every turn with
-   `build_turn_suffix(KID_MODE)` from `core.utils.textUtils`. PiVoiceLLM
-   needs the same — either inject server-side here, or move the
-   sandwich into the pi extension's system prompt.
-4. **Failure paths.** Bridge.py has a long-tail of fallback / timeout /
-   exception handling. Each path needs an equivalent: container missing,
-   pi crash, llama-swap unreachable, extension exception.
+- **Stream shape.** xiaozhi expects `response()` to be a *sync generator
+  yielding strings* (verified against `tier1_slim.LLMProvider.response`).
+  `LLMProvider.response()` here matches that exactly.
+- **Tool-call surfacing.** Pi owns the agent loop; tool calls happen
+  *inside* pi (via `dotty-pi-ext`) and only their text-shape result ever
+  leaves the container. xiaozhi never sees `tool_calls` from this
+  provider — unlike Tier1Slim, which parses them itself.
+- **Wire-protocol details.** `extension_ui_response` cancel shape from
+  pi's `docs/rpc.md`; `assistantMessageEvent` filtering rule from the
+  spike telemetry.
+
+## Open questions still on the table
+
+- **Sandwich enforcement.** Tier1Slim wraps every turn with
+  `build_turn_suffix(KID_MODE)` from `core.utils.textUtils`. PiVoiceLLM
+  needs the same — either inject server-side here, or move the
+  sandwich into the pi extension's system prompt. Latter is cleaner
+  but means kid-mode toggles need to push a system-prompt swap into
+  the container.
+- **Memory write-back.** Tier1Slim posts every turn to
+  `bridge.py:/api/voice/memory_log` + `/api/voice/remember`. Once
+  bridge.py retires, those need new homes — likely a small write
+  inside the pi extension (sqlite_brain_db.write) triggered by a
+  `[REMEMBER: …]` marker in the final assistant text, plus a per-turn
+  log row. Belongs in the pi extension, not here.
+- **Persona file location.** Tier1Slim reads from a path on the bridge;
+  the pi extension will need its own path under
+  `/mnt/user/appdata/dotty-pi/persona/`. Wiring TBD.
 
 ## See also
 
