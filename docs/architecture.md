@@ -239,7 +239,7 @@ WebSocket lifecycle gotcha: xiaozhi only opens the WS during a conversation. Fir
 - **ZeroClaw host compromise** gives them everything — LLM keys, memory DB, workspace persona files.
 - **OpenRouter compromise** gives them log access to every prompt sent. Treat prompts as non-confidential.
 
-See [`../ROADMAP.md`](../ROADMAP.md) for related backlog items (privacy-indicator LEDs, child-safety hardening).
+See [`ROADMAP.md`](ROADMAP.md) for related backlog items (privacy-indicator LEDs, child-safety hardening).
 
 ## Deployment files (this repo)
 

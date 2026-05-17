@@ -108,8 +108,8 @@ These are real hardware features with no documented MCP tool in the default firm
 
 ## Safety-relevant hardware facts
 
-- **Mic is I2S via ES7210.** Hot whenever the firmware chooses — there is no hardware mic-mute. The privacy-indicator LED item in [`ROADMAP.md`](../ROADMAP.md) exists because of this.
-- **Servos can move fast.** Feedback servos in a kids' environment can startle. The StackChan kit uses the M5Stack Avatar library's ease functions; the velocity cap is a firmware-side choice, not a hardware limit. See the "Servo speed caps" item in [`ROADMAP.md`](../ROADMAP.md).
+- **Mic is I2S via ES7210.** Hot whenever the firmware chooses — there is no hardware mic-mute. The privacy-indicator LED item in [`ROADMAP.md`](ROADMAP.md) exists because of this.
+- **Servos can move fast.** Feedback servos in a kids' environment can startle. The StackChan kit uses the M5Stack Avatar library's ease functions; the velocity cap is a firmware-side choice, not a hardware limit. See the "Servo speed caps" item in [`ROADMAP.md`](ROADMAP.md).
 - **Camera has no shutter.** Software-only enable. The `take_photo` MCP tool should always co-activate a distinct LED state (see child-safety task).
 
 ## See also

@@ -79,7 +79,7 @@ firmware/firmware/xiaozhi-esp32/boards/
 
 ### 3. Build and flash
 
-See [CLAUDE.md](../../CLAUDE.md#firmware-iteration) for the full build and flash commands. In short:
+The abridged build + flash commands are below; the project's root `CLAUDE.md` has the full version with gotchas (CMake GLOB cache, `%lld` printf quirks, patch regeneration, `/dev/ttyACM0` reattach behaviour).
 
 ```bash
 cd firmware/firmware

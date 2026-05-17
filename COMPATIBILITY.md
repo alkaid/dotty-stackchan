@@ -7,7 +7,7 @@ server-side components: xiaozhi-esp32-server, zeroclaw-bridge (`bridge.py`),
 and the ZeroClaw agent. It describes what each component exposes, what counts
 as a breaking change, and how to upgrade safely.
 
-For protocol wire formats see [docs/protocols.md](docs/protocols.md).
+For protocol wire formats see [protocols.md](https://brettkinny.github.io/dotty-stackchan/latest/protocols/).
 
 ## Compatibility matrix
 
@@ -95,7 +95,7 @@ Server and firmware are versioned independently:
    on tag push; if you need to deploy manually, run
    `mike deploy --push --update-aliases X.Y latest` from the repo root after
    `pip install -r docs/requirements.txt`). See
-   [`docs/versioning.md`](docs/versioning.md) for the full URL/alias model.
+   [`versioning.md`](https://brettkinny.github.io/dotty-stackchan/latest/versioning/) for the full URL/alias model.
 
 GitHub Actions handles image builds, artifact publishing, and versioned doc
 deploys from the tag.

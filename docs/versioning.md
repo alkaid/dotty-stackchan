@@ -21,12 +21,12 @@ of the published versions. The default landing page is `/latest/`.
 The firmware and the server can lag each other. A user on `fw-v0.1.0` should
 not be reading instructions written against `fw-v1.0.0` -- the MCP tool surface
 or the WebSocket frame shape may have shifted. See
-[COMPATIBILITY.md](../COMPATIBILITY.md) for the full breaking-change policy.
+[COMPATIBILITY.md](COMPATIBILITY.md) for the full breaking-change policy.
 
 ## Version policy
 
 Versions follow SemVer. Tag namespaces are split between server and firmware
-(see [COMPATIBILITY.md](../COMPATIBILITY.md#tag-namespaces)):
+(see [COMPATIBILITY.md](COMPATIBILITY.md#tag-namespaces)):
 
 - **Server** -- `server-vX.Y.Z` (bridge, custom providers, docker compose).
 - **Firmware** -- `fw-vX.Y.Z` (ESP32-S3 StackChan firmware).
@@ -106,8 +106,8 @@ redirected to `/latest/`.
 
 ## See also
 
-- [COMPATIBILITY.md](../COMPATIBILITY.md) -- the breaking-change policy and
+- [COMPATIBILITY.md](COMPATIBILITY.md) -- the breaking-change policy and
   release process.
-- [CONTRIBUTING.md](../CONTRIBUTING.md) -- how to contribute documentation
+- [CONTRIBUTING.md](CONTRIBUTING.md) -- how to contribute documentation
   alongside code.
 - [`mike` upstream](https://github.com/jimporter/mike) -- the underlying tool.

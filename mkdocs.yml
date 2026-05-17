@@ -39,45 +39,45 @@ plugins:
 nav:
   - Home: README.md
   - Getting Started: SETUP.md
-  - Architecture: docs/architecture.md
+  - Architecture: architecture.md
   - Hardware:
-      - Hardware: docs/hardware.md
-      - Hardware Support: docs/hardware-support.md
-  - Voice Pipeline: docs/voice-pipeline.md
-  - Voice Mode Entry: docs/voice-mode-entry.md
-  - Voice Catalog: docs/voice-catalog.md
-  - Brain: docs/brain.md
-  - Protocols: docs/protocols.md
-  - OTA Verification: docs/ota-verification.md
-  - Kid Mode: docs/kid-mode.md
-  - LLM Backends: docs/llm-backends.md
-  - Observability: docs/observability.md
+      - Hardware: hardware.md
+      - Hardware Support: hardware-support.md
+  - Voice Pipeline: voice-pipeline.md
+  - Voice Mode Entry: voice-mode-entry.md
+  - Voice Catalog: voice-catalog.md
+  - Brain: brain.md
+  - Protocols: protocols.md
+  - OTA Verification: ota-verification.md
+  - Kid Mode: kid-mode.md
+  - LLM Backends: llm-backends.md
+  - Observability: observability.md
   - Cookbook:
-      - Change Persona: docs/cookbook/change-persona.md
-      - Swap Voice: docs/cookbook/swap-voice.md
-      - Run Fully Local: docs/cookbook/run-fully-local.md
-      - Add Emoji: docs/cookbook/add-emoji.md
-      - Disable Kid Mode: docs/cookbook/disable-kid-mode.md
+      - Change Persona: cookbook/change-persona.md
+      - Swap Voice: cookbook/swap-voice.md
+      - Run Fully Local: cookbook/run-fully-local.md
+      - Add Emoji: cookbook/add-emoji.md
+      - Disable Kid Mode: cookbook/disable-kid-mode.md
   - Advanced:
-      - Multi-host deployment: docs/advanced/multi-host.md
-      - Variant port guide: docs/advanced/variant-port-guide.md
+      - Multi-host deployment: advanced/multi-host.md
+      - Variant port guide: advanced/variant-port-guide.md
   - Reference:
-      - Emoji Mapping: docs/emoji-mapping.md
-      - Interaction Map: docs/interaction-map.md
-      - Latent Capabilities: docs/latent-capabilities.md
-      - References: docs/references.md
-  - Troubleshooting: docs/troubleshooting.md
-  - FAQ: docs/faq.md
-  - About: docs/about.md
+      - Emoji Mapping: emoji-mapping.md
+      - Interaction Map: interaction-map.md
+      - Latent Capabilities: latent-capabilities.md
+      - References: references.md
+  - Troubleshooting: troubleshooting.md
+  - FAQ: faq.md
+  - About: about.md
   - Roadmap: ROADMAP.md
   - Contributing: CONTRIBUTING.md
-  - Style Guide: docs/style.md
+  - Style Guide: style.md
   - Security: SECURITY.md
   - Compatibility: COMPATIBILITY.md
-  - SBOM: docs/sbom.md
-  - Signed Releases: docs/signed-releases.md
-  - Reproducible Builds: docs/reproducible-builds.md
-  - Versioning: docs/versioning.md
+  - SBOM: sbom.md
+  - Signed Releases: signed-releases.md
+  - Reproducible Builds: reproducible-builds.md
+  - Versioning: versioning.md
   - Changelog: CHANGELOG.md
 
 extra:

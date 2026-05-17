@@ -20,7 +20,7 @@ The default setup in `compose.all-in-one.yml` runs everything on one Docker host
 
 ## Setup
 
-The main [README](../../README.md) already documents this layout in detail. The short version:
+The main [SETUP guide](../SETUP.md) and [architecture page](../architecture.md) already document this layout in detail. The short version:
 
 1. **Docker host:**
    - Clone this repo to `<XIAOZHI_PATH>`.
@@ -46,7 +46,7 @@ The main [README](../../README.md) already documents this layout in detail. The 
 
 ## Reference
 
-- Full architecture diagram: [README.md](../../README.md#high-level-architecture)
-- Endpoint table: [README.md](../../README.md#endpoints)
-- Bridge internals: [docs/protocols.md](../protocols.md) (ACP JSON-RPC section)
-- Troubleshooting: [README.md](../../README.md#troubleshooting)
+- Full architecture diagram: [architecture.md](../architecture.md)
+- Endpoint table: [architecture.md](../architecture.md#deployment-files-this-repo)
+- Bridge internals: [protocols.md](../protocols.md) (ACP JSON-RPC section)
+- Troubleshooting: [troubleshooting.md](../troubleshooting.md)

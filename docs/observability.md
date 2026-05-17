@@ -12,7 +12,7 @@ A starter Grafana dashboard lives at
 [`monitoring/grafana-dashboard.json`](https://github.com/BrettKinny/dotty-stackchan/blob/main/monitoring/grafana-dashboard.json).
 
 These metrics are the **measurement prerequisite** for the
-[first-audio latency reduction](../ROADMAP.md) follow-up work. Numbers
+[first-audio latency reduction](ROADMAP.md) follow-up work. Numbers
 come first; you can't tune what you can't see.
 
 !!! warning "LAN-only — never expose `/metrics` to the internet"

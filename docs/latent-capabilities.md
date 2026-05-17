@@ -96,7 +96,7 @@ These are all feeders for the **`ROADMAP.md`** "Map the ZeroClaw ↔ xiaozhi-ser
 
 ## See also
 
-- [../ROADMAP.md](../ROADMAP.md) — live backlog; this file is a *source* for it, not a replacement.
+- [ROADMAP.md](ROADMAP.md) — live backlog; this file is a *source* for it, not a replacement.
 - [hardware.md](./hardware.md) — what the hardware features actually are.
 - [voice-pipeline.md](./voice-pipeline.md) — what the server supports upstream.
 - [brain.md](./brain.md) — what ZeroClaw/Qwen/OpenRouter expose.

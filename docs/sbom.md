@@ -136,9 +136,9 @@ File an issue and check `LICENSE` + `COMPATIBILITY.md` before merging.
 
 ## Cross-references
 
-- [`COMPATIBILITY.md`](../COMPATIBILITY.md) — versioning + release process
+- [`COMPATIBILITY.md`](COMPATIBILITY.md) — versioning + release process
   the SBOM snapshots against.
-- [`SECURITY.md`](../SECURITY.md) — threat model + how to report security
+- [`SECURITY.md`](SECURITY.md) — threat model + how to report security
   issues that an SBOM scan might surface.
 - [`docs/signed-releases.md`](signed-releases.md) — companion scaffold for
   GPG-signing release artifacts.

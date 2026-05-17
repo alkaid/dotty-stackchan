@@ -80,7 +80,7 @@ The docs site is published per-version using
 [`mike`](https://github.com/jimporter/mike). Pushes to `main` update the
 `/dev/` alias automatically; tag pushes (`server-vX.Y.Z`, `fw-vX.Y.Z`) publish
 a versioned tree at `/vX.Y/` and bump the `/latest/` alias. See
-[`docs/versioning.md`](docs/versioning.md) for the URL structure, version
+[`versioning.md`](https://brettkinny.github.io/dotty-stackchan/latest/versioning/) for the URL structure, version
 dropdown behavior, and maintainer commands (`mike deploy ... --push`,
 `mike list`, `mike delete`).
 

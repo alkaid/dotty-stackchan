@@ -111,6 +111,6 @@ See [hardware-support.md](./hardware-support.md) for the full support matrix.
 - [about.md](./about.md) — what the project is and who it's for.
 - [hardware-support.md](./hardware-support.md) — hardware requirements and support tiers.
 - [troubleshooting.md](./troubleshooting.md) — symptom-based debugging guide.
-- [README.md](../README.md) — deployment guide.
+- [SETUP.md](SETUP.md) — deployment guide.
 
 Last verified: 2026-05-17.

@@ -26,7 +26,7 @@ maintainer key exists, signatures become opt-in for users who care.
 
 ## Maintainer key fingerprint
 
-The maintainer's GPG public-key fingerprint is published in [`KEYS.txt`](../KEYS.txt)
+The maintainer's GPG public-key fingerprint is published in [`KEYS.txt`](KEYS.txt)
 at the repo root. This file is the single source of truth — the README links
 to it rather than embedding the fingerprint, so the fingerprint never goes
 stale across docs.
@@ -134,11 +134,11 @@ gpg --keyserver keys.openpgp.org --send-keys <MAINTAINER_KEY_FINGERPRINT>
 
 ## Cross-references
 
-- [`COMPATIBILITY.md`](../COMPATIBILITY.md#release-process) — when a release
+- [`COMPATIBILITY.md`](COMPATIBILITY.md#release-process) — when a release
   is cut, signing becomes part of the cutting process.
 - [`docs/sbom.md`](sbom.md) — sister scaffold; signed SBOMs let a verifier
   cross-check the signed binary against an audited dependency tree.
-- [`SECURITY.md`](../SECURITY.md) — threat model the signing scaffold
+- [`SECURITY.md`](SECURITY.md) — threat model the signing scaffold
   defends against.
 
 ## Follow-ups

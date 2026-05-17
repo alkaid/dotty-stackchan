@@ -6,7 +6,7 @@ description: From zero to first voice turn in 15 minutes.
 # Quickstart
 
 Get Dotty talking in 15 minutes. This is the single opinionated happy
-path -- see [SETUP.md](../SETUP.md) for build-from-source and
+path -- see [SETUP.md](SETUP.md) for build-from-source and
 alternative configurations.
 
 ## What you need
@@ -67,7 +67,7 @@ that endpoint isn't reachable, either:
 - switch `selected_module.LLM` to `OpenAICompat` and point it at any
   cloud OpenAI-compatible API, or
 - switch to `ZeroClawLLM` and run the full ZeroClaw agent on a second
-  host (see [SETUP.md](../SETUP.md)).
+  host (see [SETUP.md](SETUP.md)).
 
 ## 4. Run setup
 
