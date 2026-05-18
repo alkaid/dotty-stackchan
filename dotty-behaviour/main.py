@@ -23,9 +23,15 @@ from consumers import (
     SoundTurner,
     WakeWordTurner,
 )
-from dispatch import NarrativeLLMClient, VLMClient, XiaozhiAdminClient
+from dispatch import (
+    AudioCaptionClient,
+    NarrativeLLMClient,
+    VLMClient,
+    XiaozhiAdminClient,
+)
 from logs import NdjsonWriter
 from perception import PerceptionState
+from routes import audio as audio_routes
 from routes import health as health_routes
 from routes import perception as perception_routes
 from routes import vision as vision_routes
@@ -73,9 +79,16 @@ async def lifespan(app: FastAPI):
         api_key=config.VLM_API_KEY,
         timeout_s=config.VISION_TIMEOUT_SEC,
     )
+    audio_caption = AudioCaptionClient(
+        config.AUDIO_CAPTION_API_URL,
+        config.AUDIO_CAPTION_MODEL,
+        api_key=config.AUDIO_CAPTION_API_KEY,
+        timeout_s=config.AUDIO_CAPTION_TIMEOUT_SEC,
+    )
     app.state.xiaozhi = xiaozhi
     app.state.narrative = narrative
     app.state.vlm = vlm
+    app.state.audio_caption = audio_caption
     # kid-mode default — flipped by the dashboard's kid-mode toggle
     # (deferred slice). vision_explain reads this via get_kid_mode().
     app.state.kid_mode = False
@@ -190,3 +203,4 @@ app = FastAPI(
 app.include_router(health_routes.router)
 app.include_router(perception_routes.router)
 app.include_router(vision_routes.router)
+app.include_router(audio_routes.router)

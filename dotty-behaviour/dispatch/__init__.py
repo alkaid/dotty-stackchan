@@ -19,6 +19,7 @@ qwen3.6:27b-think on the same llama-swap proxy. The narrative path
 preempts neither voice model (both are in the `voice` matrix set).
 """
 
+from .audio_caption import AUDIO_FALLBACK_DESCRIPTION, AudioCaptionClient
 from .llm import NarrativeLLMClient
 from .vlm import (
     VLM_NETWORK_ERROR_SENTINEL,
@@ -28,6 +29,8 @@ from .vlm import (
 from .xiaozhi import XiaozhiAdminClient
 
 __all__ = [
+    "AUDIO_FALLBACK_DESCRIPTION",
+    "AudioCaptionClient",
     "NarrativeLLMClient",
     "VLM_NETWORK_ERROR_SENTINEL",
     "VLM_OFFLINE_SENTINEL",

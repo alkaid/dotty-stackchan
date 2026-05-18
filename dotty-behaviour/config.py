@@ -198,6 +198,37 @@ ROOM_VIEW_TALK_KICKOFF_GRACE_SEC: float = _env_float(
 )
 
 
+# ---------------------------------------------------------------------------
+# Audio captioning — OpenAI-style chat completion with an `input_audio`
+# content block (Gemini family routes audio through this format on
+# OpenRouter). Reuses the OpenRouter key by default so a single
+# credential covers both modalities.
+# ---------------------------------------------------------------------------
+AUDIO_CAPTION_MODEL: str = os.environ.get(
+    "AUDIO_CAPTION_MODEL", "google/gemini-2.5-flash"
+)
+AUDIO_CAPTION_API_KEY: str = os.environ.get(
+    "AUDIO_CAPTION_API_KEY", VISION_API_KEY
+)
+AUDIO_CAPTION_API_URL: str = os.environ.get(
+    "AUDIO_CAPTION_API_URL",
+    "https://openrouter.ai/api/v1/chat/completions",
+)
+AUDIO_CAPTION_TIMEOUT_SEC: float = _env_float("AUDIO_CAPTION_TIMEOUT", 20.0)
+
+
+AUDIO_CAPTION_SYSTEM_PROMPT: str = (
+    "You are listening to a short audio clip from a small family "
+    "robot's microphone. Describe what you hear in 1–2 sentences. "
+    "Note speech (paraphrase briefly, do not transcribe verbatim), "
+    "music, and ambient sounds. Especially flag anything unusual — "
+    "raised voices, distress, breaking glass, alarms, impacts, or "
+    "sudden loud noises — at the start of your reply. If the clip is "
+    "normal ambient sound or quiet conversation, say so briefly. "
+    "Do not invent details you cannot hear."
+)
+
+
 def build_vision_system_prompt(kid: bool) -> str:
     """Vision system prompt — toggle on kid_mode for child-safe phrasing.
 
