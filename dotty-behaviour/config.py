@@ -269,6 +269,28 @@ SCENE_SYNTHESIS_TRIGGER_EVENTS: frozenset[str] = frozenset(
 )
 
 
+# ---------------------------------------------------------------------------
+# Security capture loop — fires on state_changed → security; runs a
+# per-device interval timer that does take_photo + capture_audio +
+# NDJSON append. Text-only persistence (image / audio bytes discarded;
+# only the VLM/ASR descriptions land on disk).
+# ---------------------------------------------------------------------------
+SECURITY_CYCLE_ENABLED: bool = (
+    os.environ.get("SECURITY_CYCLE_ENABLED", "1") == "1"
+)
+SECURITY_CAPTURE_INTERVAL_SEC: float = _env_float(
+    "SECURITY_CAPTURE_INTERVAL_SEC", 20.0
+)
+SECURITY_AUDIO_DURATION_MS: int = _env_int("SECURITY_AUDIO_DURATION_MS", 5000)
+SECURITY_VLM_PROMPT: str = os.environ.get(
+    "SECURITY_VLM_PROMPT",
+    "Describe everything visible in this image. Note any people, "
+    "movements, or items of interest. Be concise.",
+)
+SECURITY_VLM_WAIT_SEC: float = _env_float("SECURITY_VLM_TIMEOUT_SEC", 20.0)
+SECURITY_RING_BUFFER_SIZE: int = _env_int("SECURITY_RING_BUFFER_SIZE", 60)
+
+
 AUDIO_CAPTION_SYSTEM_PROMPT: str = (
     "You are listening to a short audio clip from a small family "
     "robot's microphone. Describe what you hear in 1–2 sentences. "

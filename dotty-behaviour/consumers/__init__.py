@@ -22,6 +22,7 @@ from .face_lost_aborter import FaceLostAborter
 from .idle_photographer import IdlePhotographer
 from .purr_player import PurrPlayer
 from .scene_synthesis import SceneSynthesisLoop
+from .security_cycle import SecurityCycle
 from .sleep_dreamer import SleepDreamer
 from .sound_turner import SoundTurner
 from .wake_word_turner import WakeWordTurner
@@ -33,6 +34,7 @@ __all__ = [
     "IdlePhotographer",
     "PurrPlayer",
     "SceneSynthesisLoop",
+    "SecurityCycle",
     "SleepDreamer",
     "SoundTurner",
     "WakeWordTurner",

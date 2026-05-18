@@ -21,6 +21,7 @@ from consumers import (
     IdlePhotographer,
     PurrPlayer,
     SceneSynthesisLoop,
+    SecurityCycle,
     SleepDreamer,
     SoundTurner,
     WakeWordTurner,
@@ -208,6 +209,24 @@ async def lifespan(app: FastAPI):
         )
     else:
         log.info("scene synthesis loop disabled by SCENE_SYNTHESIS_ENABLED=0")
+
+    if config.SECURITY_CYCLE_ENABLED:
+        security = SecurityCycle(
+            state,
+            xiaozhi,
+            NdjsonWriter(config.LOG_DIR, "security", config.LOCAL_TZ),
+            interval_sec=config.SECURITY_CAPTURE_INTERVAL_SEC,
+            audio_duration_ms=config.SECURITY_AUDIO_DURATION_MS,
+            vlm_prompt=config.SECURITY_VLM_PROMPT,
+            vlm_wait_sec=config.SECURITY_VLM_WAIT_SEC,
+            ring_buffer_size=config.SECURITY_RING_BUFFER_SIZE,
+        )
+        # Surface to the dashboard via app.state so the recent-cycles
+        # panel can read from it.
+        app.state.security_cycle = security
+        consumers.append(security)
+    else:
+        log.info("security cycle disabled by SECURITY_CYCLE_ENABLED=0")
 
     tasks = [
         asyncio.create_task(c.run(), name=type(c).__name__) for c in consumers
