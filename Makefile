@@ -18,7 +18,7 @@ BOLD   := \033[1m
 RESET  := \033[0m
 
 # ── Targets ──────────────────────────────────────────────────────────
-.PHONY: help setup fetch-models doctor audit up down logs status voice-list voice-install sbom verify-firmware test lint check _preflight-compose
+.PHONY: help setup fetch-models doctor audit up down logs status voice-list voice-install sbom verify-firmware test lint check _preflight-compose _preflight-rendered
 
 # ─────────────────────────────────────────────────────────────────────
 # _preflight-compose — fail fast if Docker Compose v2 plugin is missing
@@ -31,6 +31,16 @@ RESET  := \033[0m
 # failure inside whatever target they invoked. Catch it up front with
 # install guidance instead.
 # ─────────────────────────────────────────────────────────────────────
+_preflight-rendered:
+	@if [ ! -f docker-compose.yml ] || [ ! -f data/.config.yaml ]; then \
+	  echo ""; \
+	  echo -e "$(RED)Error: docker-compose.yml and/or data/.config.yaml not found.$(RESET)"; \
+	  echo "These are rendered from *.template by 'make setup'."; \
+	  echo "Run:  make setup"; \
+	  echo ""; \
+	  exit 1; \
+	fi
+
 _preflight-compose:
 	@if ! docker compose version >/dev/null 2>&1; then \
 	  echo ""; \
@@ -73,55 +83,144 @@ check: lint test ## Run lint + tests (the CI gate)
 
 # ─────────────────────────────────────────────────────────────────────
 # setup — interactive first-run wizard
+#
+# Idempotent: reads previous answers from .wizard.env when present,
+# offers them as defaults, and re-renders all live config files from
+# the *.template sources. Re-running setup never modifies tracked files
+# (the templates are tracked; rendered copies are in .gitignore).
+#
+# Also detects whether the NVIDIA Docker runtime is available and
+# branches the rendered config — falls back to FunASR (CPU) + drops the
+# `runtime: nvidia` block when CUDA isn't on the host.
 # ─────────────────────────────────────────────────────────────────────
-setup: _preflight-compose ## Interactive first-run wizard (prompts for IPs, names, timezone)
+WIZARD_ENV := .wizard.env
+
+setup: _preflight-compose ## Interactive first-run wizard (re-runnable; remembers previous answers)
 	@echo ""
 	@echo -e "$(BOLD)Dotty setup wizard$(RESET)"
-	@echo "This will substitute placeholders in config files and start the stack."
+	@echo "Renders config files from *.template sources. Re-runnable;"
+	@echo "previous answers are loaded from $(WIZARD_ENV) and shown as defaults."
 	@echo ""
-	@read -rp "XIAOZHI_HOST  (LAN IP of Docker host, e.g. 192.168.1.10): " XIAOZHI_HOST && \
-	 read -rp "ZEROCLAW_HOST     (LAN IP of ZeroClaw host,  e.g. 192.168.1.20): " ZEROCLAW_HOST && \
-	 read -rp "ZEROCLAW_USER   (SSH user on the Pi,       e.g. dietpi):       " ZEROCLAW_USER && \
-	 read -rp "ROBOT_NAME (name the robot calls itself) [Dotty]:          " ROBOT_NAME && \
-	 ROBOT_NAME=$${ROBOT_NAME:-Dotty} && \
-	 read -rp "YOUR_NAME  (your name / org,           e.g. Brett):       " YOUR_NAME && \
-	 read -rp "Timezone   (TZ identifier,             e.g. Australia/Brisbane): " TZ_VALUE && \
-	 echo "" && \
+	@# Source previous answers if present so we can offer them as defaults.
+	@# Values are written via `printf '%q'` below so sourcing is safe even
+	@# for inputs with spaces or shell metacharacters.
+	@set -e; \
+	 if [ -f $(WIZARD_ENV) ]; then \
+	   echo -e "$(GREEN)Found $(WIZARD_ENV) — previous answers loaded as defaults.$(RESET)"; \
+	   set -a; . ./$(WIZARD_ENV); set +a; \
+	   echo ""; \
+	 fi; \
+	 prompt() { \
+	   local var="$$1" label="$$2" example="$$3" cur="$$4" ans hint; \
+	   hint="$$label"; \
+	   if [ -n "$$cur" ]; then hint="$$hint [$$cur]"; \
+	   elif [ -n "$$example" ]; then hint="$$hint (e.g. $$example)"; fi; \
+	   read -rp "$$hint: " ans; \
+	   if [ -z "$$ans" ]; then ans="$$cur"; fi; \
+	   printf -v "$$var" '%s' "$$ans"; \
+	 }; \
+	 prompt XIAOZHI_HOST    "XIAOZHI_HOST     (LAN IP of Docker host)" "192.168.1.10"  "$$XIAOZHI_HOST"; \
+	 prompt ZEROCLAW_HOST   "ZEROCLAW_HOST    (LAN IP of ZeroClaw host)" "192.168.1.20" "$$ZEROCLAW_HOST"; \
+	 prompt ZEROCLAW_USER   "ZEROCLAW_USER    (SSH user on the bridge host)" "dietpi"  "$$ZEROCLAW_USER"; \
+	 prompt ROBOT_NAME      "ROBOT_NAME       (what the robot calls itself)" "Dotty"   "$${ROBOT_NAME:-Dotty}"; \
+	 prompt YOUR_NAME       "YOUR_NAME        (your name / org)" "Brett"               "$$YOUR_NAME"; \
+	 prompt TZ_VALUE        "TZ_VALUE         (IANA timezone)" "Australia/Brisbane"    "$$TZ_VALUE"; \
+	 prompt LLAMA_SWAP_URL  "LLAMA_SWAP_URL   (Tier1Slim LLM endpoint, OpenAI-compat /v1)" "http://192.168.1.67:8080/v1" "$$LLAMA_SWAP_URL"; \
+	 prompt LLAMA_SWAP_KEY  "LLAMA_SWAP_KEY   (any string; llama-swap doesn't enforce auth)" "llama-swap" "$${LLAMA_SWAP_KEY:-llama-swap}"; \
+	 prompt LLAMA_SWAP_MODEL "LLAMA_SWAP_MODEL (Tier1Slim inner-loop model)" "qwen3.5:4b"        "$${LLAMA_SWAP_MODEL:-qwen3.5:4b}"; \
+	 echo ""; \
 	 if [ -z "$$XIAOZHI_HOST" ] || [ -z "$$ZEROCLAW_HOST" ] || [ -z "$$ZEROCLAW_USER" ] || \
-	    [ -z "$$ROBOT_NAME" ] || [ -z "$$YOUR_NAME" ] || [ -z "$$TZ_VALUE" ]; then \
+	    [ -z "$$ROBOT_NAME" ] || [ -z "$$YOUR_NAME" ] || [ -z "$$TZ_VALUE" ] || \
+	    [ -z "$$LLAMA_SWAP_URL" ] || [ -z "$$LLAMA_SWAP_KEY" ] || [ -z "$$LLAMA_SWAP_MODEL" ]; then \
 	   echo -e "$(RED)Error: all fields are required.$(RESET)"; exit 1; \
-	 fi && \
-	 echo -e "$(BOLD)Substituting placeholders...$(RESET)" && \
-	 for f in .config.yaml docker-compose.yml zeroclaw-bridge.service; do \
-	   if [ -f "$$f" ]; then \
-	     sed -i "s|<XIAOZHI_HOST>|$$XIAOZHI_HOST|g"   "$$f"; \
-	     sed -i "s|<ZEROCLAW_HOST>|$$ZEROCLAW_HOST|g"         "$$f"; \
-	     sed -i "s|<ZEROCLAW_USER>|$$ZEROCLAW_USER|g"     "$$f"; \
-	     sed -i "s|<ROBOT_NAME>|$$ROBOT_NAME|g; s|You are Dotty,|You are $$ROBOT_NAME,|g" "$$f"; \
-	     sed -i "s|<YOUR_NAME>|$$YOUR_NAME|g"   "$$f"; \
-	     echo "  $$f — done"; \
-	   else \
-	     echo -e "  $(YELLOW)$$f — not found, skipping$(RESET)"; \
+	 fi; \
+	 echo -e "$(BOLD)Detecting NVIDIA Docker runtime...$(RESET)"; \
+	 if docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -qi '"nvidia"'; then \
+	   HAS_CUDA=1; \
+	   echo -e "  $(GREEN)Found — using WhisperLocal on GPU (float16).$(RESET)"; \
+	 else \
+	   HAS_CUDA=0; \
+	   echo -e "  $(YELLOW)Not found — using FunASR on CPU instead.$(RESET)"; \
+	   echo "  (Install nvidia-container-toolkit and re-run setup to enable GPU ASR.)"; \
+	 fi; \
+	 echo ""; \
+	 echo -e "$(BOLD)Saving answers to $(WIZARD_ENV)...$(RESET)"; \
+	 { \
+	   echo "# Generated by 'make setup' — defaults for the next run."; \
+	   echo "# Values shell-quoted so sourcing tolerates spaces and metacharacters."; \
+	   printf 'XIAOZHI_HOST=%q\n'     "$$XIAOZHI_HOST"; \
+	   printf 'ZEROCLAW_HOST=%q\n'    "$$ZEROCLAW_HOST"; \
+	   printf 'ZEROCLAW_USER=%q\n'    "$$ZEROCLAW_USER"; \
+	   printf 'ROBOT_NAME=%q\n'       "$$ROBOT_NAME"; \
+	   printf 'YOUR_NAME=%q\n'        "$$YOUR_NAME"; \
+	   printf 'TZ_VALUE=%q\n'         "$$TZ_VALUE"; \
+	   printf 'LLAMA_SWAP_URL=%q\n'   "$$LLAMA_SWAP_URL"; \
+	   printf 'LLAMA_SWAP_KEY=%q\n'   "$$LLAMA_SWAP_KEY"; \
+	   printf 'LLAMA_SWAP_MODEL=%q\n' "$$LLAMA_SWAP_MODEL"; \
+	   printf 'HAS_CUDA=%q\n'         "$$HAS_CUDA"; \
+	 } > $(WIZARD_ENV); \
+	 echo "  $(WIZARD_ENV) — done"; \
+	 echo ""; \
+	 echo -e "$(BOLD)Rendering templates...$(RESET)"; \
+	 mkdir -p data; \
+	 if [ "$$HAS_CUDA" = "1" ]; then \
+	   ASR_MODULE=WhisperLocal; ASR_DEVICE=cuda;  ASR_COMPUTE_TYPE=float16; \
+	 else \
+	   ASR_MODULE=FunASR;       ASR_DEVICE=cpu;   ASR_COMPUTE_TYPE=int8; \
+	 fi; \
+	 sed_escape() { printf '%s' "$$1" | sed -e 's/[\\&|]/\\&/g'; }; \
+	 e_XIAOZHI_HOST=$$(sed_escape   "$$XIAOZHI_HOST"); \
+	 e_ZEROCLAW_HOST=$$(sed_escape  "$$ZEROCLAW_HOST"); \
+	 e_ZEROCLAW_USER=$$(sed_escape  "$$ZEROCLAW_USER"); \
+	 e_ROBOT_NAME=$$(sed_escape     "$$ROBOT_NAME"); \
+	 e_YOUR_NAME=$$(sed_escape      "$$YOUR_NAME"); \
+	 e_TZ_VALUE=$$(sed_escape       "$$TZ_VALUE"); \
+	 e_LLAMA_SWAP_URL=$$(sed_escape "$$LLAMA_SWAP_URL"); \
+	 e_LLAMA_SWAP_KEY=$$(sed_escape "$$LLAMA_SWAP_KEY"); \
+	 e_LLAMA_SWAP_MODEL=$$(sed_escape "$$LLAMA_SWAP_MODEL"); \
+	 render() { \
+	   local src="$$1" dst="$$2"; \
+	   sed \
+	     -e "s|<XIAOZHI_HOST>|$$e_XIAOZHI_HOST|g" \
+	     -e "s|<ZEROCLAW_HOST>|$$e_ZEROCLAW_HOST|g" \
+	     -e "s|<ZEROCLAW_USER>|$$e_ZEROCLAW_USER|g" \
+	     -e "s|<ROBOT_NAME>|$$e_ROBOT_NAME|g" \
+	     -e "s|You are Dotty,|You are $$e_ROBOT_NAME,|g" \
+	     -e "s|<YOUR_NAME>|$$e_YOUR_NAME|g" \
+	     -e "s|<TZ_VALUE>|$$e_TZ_VALUE|g" \
+	     -e "s|<ASR_MODULE>|$$ASR_MODULE|g" \
+	     -e "s|<ASR_DEVICE>|$$ASR_DEVICE|g" \
+	     -e "s|<ASR_COMPUTE_TYPE>|$$ASR_COMPUTE_TYPE|g" \
+	     -e "s|<LLAMA_SWAP_URL>|$$e_LLAMA_SWAP_URL|g" \
+	     -e "s|<LLAMA_SWAP_KEY>|$$e_LLAMA_SWAP_KEY|g" \
+	     -e "s|<LLAMA_SWAP_MODEL>|$$e_LLAMA_SWAP_MODEL|g" \
+	     "$$src" > "$$dst.tmp"; \
+	   if [ "$$HAS_CUDA" != "1" ]; then \
+	     sed -i \
+	       -e '/# --- BEGIN CUDA BLOCK/,/# --- END CUDA BLOCK ---/d' \
+	       -e '/# --- BEGIN CUDA ENV/,/# --- END CUDA ENV ---/d' \
+	       "$$dst.tmp"; \
 	   fi; \
-	 done && \
-	 if [ -f docker-compose.yml ]; then \
-	   sed -i "s|TZ=.*|TZ=$$TZ_VALUE|g" docker-compose.yml; \
-	   echo "  docker-compose.yml — timezone set to $$TZ_VALUE"; \
-	 fi && \
-	 echo "" && \
-	 $(MAKE) fetch-models && \
-	 echo "" && \
-	 echo -e "$(BOLD)Starting containers...$(RESET)" && \
-	 docker compose up -d && \
-	 echo "" && \
-	 echo -e "$(GREEN)$(BOLD)Setup complete.$(RESET)" && \
-	 echo "" && \
-	 echo "Next steps:" && \
-	 echo "  1. Flash the StackChan firmware (see SETUP.md or m5stack/StackChan repo)." && \
-	 echo "  2. In the device's Advanced Options, set the OTA URL to:" && \
-	 echo "       http://$$XIAOZHI_HOST:8003/xiaozhi/ota/" && \
-	 echo "  3. Deploy zeroclaw-bridge.service to the ZeroClaw host and start it." && \
-	 echo "  4. Run 'make doctor' to verify everything is healthy." && \
+	   mv "$$dst.tmp" "$$dst"; \
+	   echo "  $$src → $$dst"; \
+	 }; \
+	 render .config.yaml.template            data/.config.yaml; \
+	 render docker-compose.yml.template      docker-compose.yml; \
+	 render zeroclaw-bridge.service.template zeroclaw-bridge.service; \
+	 echo ""; \
+	 $(MAKE) fetch-models; \
+	 echo ""; \
+	 echo -e "$(BOLD)Starting containers...$(RESET)"; \
+	 docker compose up -d; \
+	 echo ""; \
+	 echo -e "$(GREEN)$(BOLD)Setup complete.$(RESET)"; \
+	 echo ""; \
+	 echo "Next steps:"; \
+	 echo "  1. Flash the StackChan firmware (see SETUP.md or m5stack/StackChan repo)."; \
+	 echo "  2. In the device's Advanced Options, set the OTA URL to:"; \
+	 echo "       http://$$XIAOZHI_HOST:8003/xiaozhi/ota/"; \
+	 echo "  3. Deploy zeroclaw-bridge.service to the ZeroClaw host and start it."; \
+	 echo "  4. Run 'make doctor' to verify everything is healthy."; \
 	 echo ""
 
 # ─────────────────────────────────────────────────────────────────────
@@ -193,7 +292,16 @@ sbom: ## Generate Software Bill of Materials (sbom.json)
 
 # ─────────────────────────────────────────────────────────────────────
 # doctor — health checks
+#
+# Looks at data/.config.yaml (the rendered output of `make setup`); falls
+# back to the legacy root .config.yaml for pre-template checkouts.
+# WIZARD_PLACEHOLDERS is the closed set of <TOKEN>s the wizard owns —
+# the template also carries <LLAMA_SWAP_URL>, <OPENAI_COMPAT_URL>, etc.
+# in alternate backend blocks; an unsubstituted token in an unselected
+# backend isn't an error.
 # ─────────────────────────────────────────────────────────────────────
+WIZARD_PLACEHOLDERS := <XIAOZHI_HOST>|<ZEROCLAW_HOST>|<ZEROCLAW_USER>|<ROBOT_NAME>|<YOUR_NAME>|<TZ_VALUE>|<ASR_MODULE>|<ASR_DEVICE>|<ASR_COMPUTE_TYPE>|<LLAMA_SWAP_URL>|<LLAMA_SWAP_KEY>|<LLAMA_SWAP_MODEL>
+
 doctor: ## Run health checks on config, models, and services
 	@echo ""
 	@echo -e "$(BOLD)Running health checks...$(RESET)"
@@ -208,19 +316,30 @@ doctor: ## Run health checks on config, models, and services
 	     FAIL=$$((FAIL+1)); \
 	   fi; \
 	 }; \
-	 check ".config.yaml exists" "test -f .config.yaml"; \
-	 if grep -qE '<[A-Z_]+>' .config.yaml 2>/dev/null; then \
-	   echo -e "  $(RED)FAIL$(RESET)  .config.yaml has no unsubstituted placeholders"; \
+	 if [ -f data/.config.yaml ]; then CFG=data/.config.yaml; \
+	 elif [ -f .config.yaml ]; then CFG=.config.yaml; \
+	 else CFG=""; fi; \
+	 if [ -n "$$CFG" ]; then \
+	   echo -e "  $(GREEN)PASS$(RESET)  config exists ($$CFG)"; \
+	   PASS=$$((PASS+1)); \
+	 else \
+	   echo -e "  $(RED)FAIL$(RESET)  config exists (run 'make setup')"; \
+	   FAIL=$$((FAIL+1)); \
+	 fi; \
+	 if [ -z "$$CFG" ]; then \
+	   echo -e "  $(YELLOW)SKIP$(RESET)  no config — placeholder check skipped"; \
+	 elif grep -qE '$(WIZARD_PLACEHOLDERS)' "$$CFG" 2>/dev/null; then \
+	   echo -e "  $(RED)FAIL$(RESET)  $$CFG has unsubstituted wizard placeholders"; \
 	   FAIL=$$((FAIL+1)); \
 	 else \
-	   echo -e "  $(GREEN)PASS$(RESET)  .config.yaml has no unsubstituted placeholders"; \
+	   echo -e "  $(GREEN)PASS$(RESET)  $$CFG has no unsubstituted wizard placeholders"; \
 	   PASS=$$((PASS+1)); \
 	 fi; \
 	 check "models/SenseVoiceSmall/ has files" "ls $(SENSEVOICE_DIR)/*.pt >/dev/null 2>&1 || ls $(SENSEVOICE_DIR)/*.yaml >/dev/null 2>&1"; \
 	 check "models/piper/*.onnx exists" "ls $(PIPER_DIR)/*.onnx >/dev/null 2>&1"; \
 	 check "docker compose config validates" "docker compose config --quiet"; \
-	 XIAOZHI_HOST=$$(grep -oP 'ws://\K[0-9.]+' .config.yaml 2>/dev/null | head -1); \
-	 ZEROCLAW_HOST=$$(grep -oP 'url: http://\K[0-9.]+' .config.yaml 2>/dev/null | head -1); \
+	 XIAOZHI_HOST=$$(grep -oP 'ws://\K[0-9.]+' "$$CFG" 2>/dev/null | head -1); \
+	 ZEROCLAW_HOST=$$(grep -oP 'url: http://\K[0-9.]+' "$$CFG" 2>/dev/null | head -1); \
 	 if [ -n "$$XIAOZHI_HOST" ]; then \
 	   if curl -sf --max-time 3 "http://$$XIAOZHI_HOST:8003/xiaozhi/ota/" >/dev/null 2>&1; then \
 	     echo -e "  $(GREEN)PASS$(RESET)  OTA endpoint reachable ($$XIAOZHI_HOST:8003)"; \
@@ -255,8 +374,11 @@ audit: ## Audit outbound network connections (verify local-except-LLM claim)
 	@echo ""
 	@echo -e "$(BOLD)Network audit — verifying 'local except LLM' claim$(RESET)"
 	@echo ""
-	@XIAOZHI_HOST=$$(grep -oP 'ws://\K[0-9.]+' .config.yaml 2>/dev/null | head -1); \
-	 ZEROCLAW_HOST=$$(grep -oP 'url: http://\K[0-9.]+' .config.yaml 2>/dev/null | head -1); \
+	@if [ -f data/.config.yaml ]; then CFG=data/.config.yaml; \
+	 elif [ -f .config.yaml ]; then CFG=.config.yaml; \
+	 else CFG=""; fi; \
+	 XIAOZHI_HOST=$$(grep -oP 'ws://\K[0-9.]+' "$$CFG" 2>/dev/null | head -1); \
+	 ZEROCLAW_HOST=$$(grep -oP 'url: http://\K[0-9.]+' "$$CFG" 2>/dev/null | head -1); \
 	 PASS=0; FAIL=0; WARN=0; \
 	 echo -e "$(BOLD)Server host (Docker):$(RESET)"; \
 	 if [ -n "$$XIAOZHI_HOST" ]; then \
@@ -326,13 +448,13 @@ audit: ## Audit outbound network connections (verify local-except-LLM claim)
 # ─────────────────────────────────────────────────────────────────────
 # Docker shortcuts
 # ─────────────────────────────────────────────────────────────────────
-up: _preflight-compose ## Start containers (docker compose up -d)
+up: _preflight-compose _preflight-rendered ## Start containers (docker compose up -d)
 	docker compose up -d
 
-down: _preflight-compose ## Stop containers (docker compose down)
+down: _preflight-compose _preflight-rendered ## Stop containers (docker compose down)
 	docker compose down
 
-logs: _preflight-compose ## Tail container logs (docker compose logs -f)
+logs: _preflight-compose _preflight-rendered ## Tail container logs (docker compose logs -f)
 	docker compose logs -f
 
 voice-list: ## List curated Piper voices (see docs/voice-catalog.md)
@@ -398,10 +520,13 @@ verify-firmware: ## Build firmware in IDF container and compute SHA256 checksums
 	fi
 	@echo ""
 
-status: _preflight-compose ## Show container status + bridge health
+status: _preflight-compose _preflight-rendered ## Show container status + bridge health
 	@docker compose ps
 	@echo ""
-	@ZEROCLAW_HOST=$$(grep -oP 'url: http://\K[0-9.]+' .config.yaml 2>/dev/null | head -1); \
+	@if [ -f data/.config.yaml ]; then CFG=data/.config.yaml; \
+	 elif [ -f .config.yaml ]; then CFG=.config.yaml; \
+	 else CFG=""; fi; \
+	 ZEROCLAW_HOST=$$(grep -oP 'url: http://\K[0-9.]+' "$$CFG" 2>/dev/null | head -1); \
 	 if [ -n "$$ZEROCLAW_HOST" ]; then \
 	   echo -n "Bridge health ($$ZEROCLAW_HOST:8080): "; \
 	   curl -sf --max-time 3 "http://$$ZEROCLAW_HOST:8080/health" && echo "" || \
