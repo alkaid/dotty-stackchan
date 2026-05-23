@@ -34,7 +34,6 @@ sys.path.insert(0, str(Path(__file__).parent / "custom-providers"))
 
 import requests
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from textUtils import (  # noqa: F401  (re-exported for downstream tools)
     ALLOWED_EMOJIS,
