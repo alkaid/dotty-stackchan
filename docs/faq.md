@@ -52,7 +52,7 @@ With Piper TTS and the default local model, nothing leaves your LAN. The trade-o
 
 ### Is it safe for kids?
 
-**Kid Mode is ON by default** (`DOTTY_KID_MODE=true`). It enforces child-safe guardrails. You can disable it with `DOTTY_KID_MODE=false` for general-purpose use.
+**Kid Mode is ON by default** (`DOTTY_KID_MODE=true`). It applies age-appropriate prompt steering (not an output content filter — see below). You can disable it with `DOTTY_KID_MODE=false` for general-purpose use.
 
 What Kid Mode enforces:
 - Per-turn sandwich enforcement forces the LLM to respond in English with an emoji prefix, which limits the scope of unexpected output.
@@ -60,7 +60,7 @@ What Kid Mode enforces:
 - Content and tone are constrained to be age-appropriate.
 
 What Kid Mode does **not** do:
-- Content-filter the LLM's output at a network level. If the LLM says something inappropriate, the stack passes it through.
+- Content-filter the LLM's output. If the LLM says something inappropriate, the stack passes it through. (A blocked-words output filter is planned — see [#138](https://github.com/BrettKinny/dotty-stackchan/issues/138).)
 - Prevent a determined child from asking adversarial questions.
 - Guarantee the LLM won't hallucinate inappropriate content (no model can).
 
