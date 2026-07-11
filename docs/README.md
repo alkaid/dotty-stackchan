@@ -26,6 +26,8 @@ re-verify claims against the canonical specs rather than trusting our paraphrase
 | Find features we aren't using yet | [latent-capabilities.md](./latent-capabilities.md) |
 | Pick an LLM backend | [llm-backends.md](./llm-backends.md) |
 | Run a live-device bench verification session | [bench-runbook.md](./bench-runbook.md) |
+| Run the full-feature UAT session (filmed for Dotty's channel) | [uat-runbook.md](./uat-runbook.md) |
+| Turn UAT clips into YouTube Shorts in Dotty's voice | [uat-social.md](./uat-social.md) |
 | Jump to an upstream repo or spec | [references.md](./references.md) |
 
 ## File map
@@ -43,6 +45,9 @@ docs/
 ├── latent-capabilities.md   ← upstream features we could wire up (cross-refs ROADMAP.md)
 ├── llm-backends.md          ← side-by-side comparison of LLM backend options
 ├── bench-runbook.md         ← ordered live-device bench session plan (epic #122)
+├── uat-runbook.md           ← full-feature UAT session script, filmed for YouTube
+├── uat-social.md            ← Dotty's-channel production guide for UAT clips
+├── uat-results-template.csv ← slicer-ready results log template
 └── references.md            ← canonical URLs, licenses, model cards, spec docs
 ```
 

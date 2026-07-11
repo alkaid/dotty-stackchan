@@ -1,6 +1,13 @@
 # Scripts
 
-Developer tooling for Dotty's singing mode. None of this runs in the live audio path — these scripts produce the WAV files that `_handle_dance()` injects into the TTS queue.
+Developer tooling. The singing-mode scripts below produce the WAV files that `_handle_dance()` injects into the TTS queue; none of them run in the live audio path.
+
+## UAT session tooling
+
+Companions to [`docs/uat-runbook.md`](../docs/uat-runbook.md):
+
+- **`uat-capture.sh start|stop [--dry-run]`** — tails the four service containers into `uat-sessions/<date>/logs/`, then on stop pulls the day's NDJSON logs out of the containers and snapshots the health/perception endpoints. Needs `XIAOZHI_SSH=user@host`.
+- **`uat-slice.py`** — cuts the phone/screen recordings into per-check clips from the session results CSV, using the on-camera sync mark to align wall-clock and video time. PASS clips → `clips/shorts/`, the rest → `clips/issues/`. Requires `ffmpeg`.
 
 ## render_singing_piper.py — Phase 1: Quick prototype
 

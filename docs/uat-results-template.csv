@@ -1,0 +1,4 @@
+check_id,verdict,source,start,end,note
+UB1,PASS,phone,14:03:10,14:04:05,example row — boot clean; delete the example rows before your session
+UC3,FAIL,phone,14:12:40,14:13:30,example row — sad face rendered as neutral; issue #TBD
+UD4,PASS,screen,15:02:05,15:02:50,example row — say box round-trip; clip from the screen capture
