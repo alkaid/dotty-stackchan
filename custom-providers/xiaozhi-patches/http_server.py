@@ -230,6 +230,10 @@ class SimpleHttpServer:
         conn, err = _dotty_resolve_conn(device_id)
         if err is not None:
             return err
+        # Publish intent before spawning the MCP send. A finishing dance uses
+        # this synchronous value to avoid restoring IDLE over an admin state
+        # change while the firmware state_changed echo is still in flight.
+        conn._dotty_desired_state = state
         _spawn(
             _dotty_device_command.call_tool(
                 conn, "self.robot.set_state", {"state": state},

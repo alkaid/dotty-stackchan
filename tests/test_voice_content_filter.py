@@ -14,6 +14,7 @@ from __future__ import annotations
 import importlib.util as _ilu
 import os
 import sys
+import tempfile
 import types
 import unittest
 from pathlib import Path
@@ -176,10 +177,18 @@ class TestPiVoiceWiring(unittest.TestCase):
             pass
 
     def _respond(self, chunks, kid_mode):
-        env = {"DOTTY_KID_MODE": "true" if kid_mode else "false"}
-        with patch.dict(os.environ, env):
-            provider = self.LLMProvider({}, client=self._FakeClient(chunks))
-        return list(provider.response("s", [{"role": "user", "content": "hi"}]))
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "DOTTY_KID_MODE": "true" if kid_mode else "false",
+                "DOTTY_KID_MODE_STATE": str(Path(tmp) / "missing-kid-mode"),
+            }
+            # PiVoice refreshes kid-mode at response time, so keep the
+            # environment patched through both construction and the turn.
+            with patch.dict(os.environ, env):
+                provider = self.LLMProvider({}, client=self._FakeClient(chunks))
+                return list(provider.response(
+                    "s", [{"role": "user", "content": "hi"}],
+                ))
 
     def test_kid_on_blocked_turn_replaced(self):
         out = self._respond(["😊 Sure, coc", "aine is a stimulant. ", "It acts on..."], True)
@@ -217,19 +226,24 @@ class TestPiVoiceWiring(unittest.TestCase):
                 pass
 
         client = DrainingClient()
-        with patch.dict(os.environ, {"DOTTY_KID_MODE": "true"}):
-            provider = self.LLMProvider({}, client=client)
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "DOTTY_KID_MODE": "true",
+                "DOTTY_KID_MODE_STATE": str(Path(tmp) / "missing-kid-mode"),
+            }
+            with patch.dict(os.environ, env):
+                provider = self.LLMProvider({}, client=client)
 
-        self.assertEqual(
-            list(provider.response("s", [{"role": "user", "content": "first"}])),
-            [REPLACEMENT],
-        )
-        self.assertEqual(client.completed, 1)
-        self.assertEqual(
-            list(provider.response("s", [{"role": "user", "content": "second"}])),
-            ["😊 Clean next turn."],
-        )
-        self.assertEqual(client.completed, 2)
+                self.assertEqual(
+                    list(provider.response("s", [{"role": "user", "content": "first"}])),
+                    [REPLACEMENT],
+                )
+                self.assertEqual(client.completed, 1)
+                self.assertEqual(
+                    list(provider.response("s", [{"role": "user", "content": "second"}])),
+                    ["😊 Clean next turn."],
+                )
+                self.assertEqual(client.completed, 2)
 
 
 class TestOpenAICompatWiring(unittest.TestCase):

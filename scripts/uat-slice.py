@@ -122,8 +122,10 @@ def main() -> int:
             print(f"SKIP {check_id}: {exc}")
             failures += 1
             continue
-        if end_wall <= start_wall:
-            print(f"SKIP {check_id}: end {row['end']} not after start {row['start']}")
+        # Equal timestamps represent an instantaneous event marker. The normal
+        # pre/post-roll padding turns those into useful, centred clips.
+        if end_wall < start_wall:
+            print(f"SKIP {check_id}: end {row['end']} before start {row['start']}")
             failures += 1
             continue
 

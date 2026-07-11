@@ -147,16 +147,20 @@ LLM providers.
   pi's `docs/rpc.md`; `assistantMessageEvent` filtering rule from the
   spike telemetry.
 
-## Open questions still on the table
+## Runtime prompt policy and persona state
 
-- **Memory write-back.** PiVoiceLLM does not yet persist conversation
-  turns or remember-markers. Memory write-back belongs in the pi
-  extension: a small write (sqlite_brain_db.write) triggered by a
-  `[REMEMBER: …]` marker in the final assistant text, plus a per-turn
-  log row.
-- **Persona file location.** The pi extension reads from
-  `/mnt/user/appdata/dotty-pi/persona/` (bind-mounted into the container).
-  Wiring is stable; runtime persona-swap mechanism TBD.
+The production Pi command uses `--no-context-files`, so files under the
+bind-mounted `/root/.pi/persona/` tree are intentionally not loaded into voice
+turns. They are live operator state and `deploy-dotty-pi.sh` does not overwrite
+them. Voice-critical routing and output policy must therefore live in the
+versioned `PiVoiceLLM` per-turn prompt (`pi_voice.py` and `textUtils.py`), which
+is shipped by `deploy-bridge-unraid.sh`. Do not rely on a repo persona edit for
+a production voice fix unless a separate, explicit persona-management workflow
+is introduced.
+
+Conversation logging and explicit memory writes are implemented by the
+`dotty-pi-ext` `agent_end` listener and `remember` tools respectively; the old
+`[REMEMBER: …]` marker protocol is not part of the live PiVoiceLLM path.
 
 ## See also
 

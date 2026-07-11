@@ -7,9 +7,24 @@ import io
 from dataclasses import dataclass, field
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 from main import app
+
+
+@pytest.fixture(autouse=True)
+def _disable_proactive_greeter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep route tests from dispatching real narrative-LLM requests.
+
+    A room-view identity match broadcasts ``face_recognized``.  The app
+    lifespan's proactive greeter consumes that event and otherwise starts a
+    blocking ``requests`` call in asyncio's default executor.  Cancelling the
+    consumer at TestClient shutdown cannot stop that worker, so the test waits
+    for the production 90-second timeout.  Greeter behaviour is covered with
+    fakes in test_greeter.py; this module only owns vision-route orchestration.
+    """
+    monkeypatch.setenv("GREETER_ENABLED", "false")
 
 
 @dataclass

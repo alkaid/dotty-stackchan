@@ -90,6 +90,10 @@ _LETTERS_RE = re.compile(r'[a-zA-Z一-鿿぀-ゟ゠-ヿ]')
 _ASR_CORRECTIONS: dict[str, str] = {
     "doty": "Dotty",
     "dottie": "Dotty",
+    # Close phonetic substitutions observed in the 2026-07-11 filmed UAT.
+    # Keep this list conservative: broader variants such as Donny, Jody/Jodi,
+    # and Claudia are real names and must not be rewritten globally.
+    "duddy": "Dotty",
     "dotie": "Dotty",
     "dotti": "Dotty",
     "dody": "Dotty",
@@ -273,7 +277,8 @@ def _is_help_request(text: str) -> bool:
 async def _send_led_color(conn: "ConnectionHandler", r: int, g: int, b: int) -> None:
     try:
         await _mcp_call_tool(
-            conn, "self.robot.set_led_color", {"r": r, "g": g, "b": b},
+            conn, "self.robot.set_led_color",
+            {"red": r, "green": g, "blue": b},
         )
     except Exception:
         pass
@@ -301,7 +306,7 @@ async def _send_led_multi(
     try:
         await _mcp_call_tool(
             conn, "self.robot.set_led_multi",
-            {"index": index, "r": r, "g": g, "b": b},
+            {"index": index, "red": r, "green": g, "blue": b},
         )
     except Exception as exc:
         # The firmware may simply not support set_led_multi yet (old
@@ -332,6 +337,10 @@ async def _send_set_state(conn: "ConnectionHandler", state: str) -> None:
     idle / talk / story_time / security / sleep / dance. The firmware
     StateManager handles the transition (pip update + idle profile + state_changed
     event back to the bridge)."""
+    # Record intent before the first await. Dance cleanup consults this value
+    # so a cancelled/finishing choreography cannot restore IDLE over a newer
+    # sleep/security/dance request while its MCP send is in flight.
+    conn._dotty_desired_state = state
     try:
         await _mcp_call_tool(conn, "self.robot.set_state", {"state": state})
     except Exception as exc:
@@ -663,6 +672,13 @@ async def _handle_dance(conn: "ConnectionHandler", dance_name: str) -> None:
 
     conn.logger.bind(tag=TAG).info(f"Dance mode: {dance_name}")
 
+    # Enter the firmware's sticky dance state before starting the server-side
+    # song timeline, making the state/event contract truthful for downstream
+    # consumers. Servo ownership during DANCE is a firmware responsibility.
+    dance_generation = getattr(conn, "_dotty_dance_generation", 0) + 1
+    conn._dotty_dance_generation = dance_generation
+    await _send_set_state(conn, "dance")
+
     await conn.websocket.send(json.dumps({
         "type": "llm",
         "text": "\U0001f606",
@@ -696,21 +712,12 @@ async def _handle_dance(conn: "ConnectionHandler", dance_name: str) -> None:
 
     timeline = resolve_timeline(dance)
     dance_task = asyncio.create_task(
-        execute_choreography(
-            conn, timeline, _send_head_angles, _send_led_color,
+        _run_owned_dance_choreography(
+            conn, dance_generation, timeline, execute_choreography,
             audio_latency_offset_ms=audio_offset,
         )
     )
     conn._dance_task = dance_task
-
-    def _on_dance_done(task):
-        async def _cleanup():
-            if task.cancelled():
-                await _send_head_angles(conn, 0, 0, 200)
-            await _send_led_color(conn, 0, 0, 0)
-        asyncio.ensure_future(_cleanup())
-
-    dance_task.add_done_callback(_on_dance_done)
 
     if has_audio and opus_packets is not None:
         # Direct send: bypass tts_audio_queue and the rate controller. The
@@ -733,6 +740,69 @@ async def _handle_dance(conn: "ConnectionHandler", dance_name: str) -> None:
             f"Say a SHORT excited one-liner intro (under 15 words). "
             f"Example: '\U0001f606 {dance['intro']}'",
         )
+
+
+async def _run_owned_dance_choreography(
+    conn: "ConnectionHandler",
+    generation: int,
+    timeline: list[tuple[int, str, dict]],
+    execute_choreography,
+    *,
+    audio_latency_offset_ms: int,
+) -> None:
+    """Run and clean up one dance without overwriting a successor state.
+
+    Cleanup belongs to this task (rather than a detached done-callback), so
+    callers can await cancellation and know all owned cleanup has finished.
+    The generation prevents an older dance cleaning up a replacement dance;
+    desired-state tracking protects security, sleep, and admin changes.
+    """
+    cancelled = False
+    try:
+        await execute_choreography(
+            conn, timeline, _send_head_angles, _send_led_color,
+            audio_latency_offset_ms=audio_latency_offset_ms,
+        )
+    except asyncio.CancelledError:
+        cancelled = True
+    finally:
+        owns_generation = (
+            getattr(conn, "_dotty_dance_generation", None) == generation
+        )
+        desired_state = getattr(conn, "_dotty_desired_state", "dance")
+        # Firmware's state_changed echo is asynchronous and may still report
+        # IDLE when a very short choreography finishes. Desired state is set
+        # synchronously before every local MCP request and is also refreshed
+        # by state_changed events (including dashboard/admin transitions).
+        still_dancing = desired_state == "dance"
+        if owns_generation and still_dancing:
+            if cancelled:
+                await _send_head_angles(conn, 0, 0, 200)
+            await _send_led_color(conn, 0, 0, 0)
+            await _send_set_state(conn, "idle")
+    if cancelled:
+        raise asyncio.CancelledError
+
+
+async def _cancel_active_dance(conn: "ConnectionHandler", dance_task) -> None:
+    """Cancel and fully clean up a dance before processing its successor.
+
+    Invalidate ownership before yielding so the task's ``finally`` cannot
+    race an IDLE write with a later security/sleep request. The call site
+    awaits this function before abort handling and successor intent parsing.
+    """
+    conn._dotty_dance_generation = (
+        getattr(conn, "_dotty_dance_generation", 0) + 1
+    )
+    conn._dotty_desired_state = "idle"
+    dance_task.cancel()
+    try:
+        await dance_task
+    except asyncio.CancelledError:
+        pass
+    await _send_head_angles(conn, 0, 0, 200)
+    await _send_led_color(conn, 0, 0, 0)
+    await _send_set_state(conn, "idle")
 
 
 _MIDI_RENDER_CACHE: dict[tuple, list[bytes]] = {}
@@ -1018,7 +1088,7 @@ async def startToChat(conn: "ConnectionHandler", text):
     if conn.client_is_speaking and conn.client_listen_mode != "manual":
         dance_task = getattr(conn, "_dance_task", None)
         if dance_task and not dance_task.done():
-            dance_task.cancel()
+            await _cancel_active_dance(conn, dance_task)
         await handleAbortMessage(conn)
 
     intent_handled = await handle_user_intent(conn, actual_text)

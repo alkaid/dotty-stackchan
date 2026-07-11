@@ -71,7 +71,7 @@ issues rather than spawning new ones, and their clips are candidate
 | `story_time` backing path | Phase 7 pending — state/LED rails only | modes.md Phase 7 |
 | `security` capture path | SecurityCycle scaffolding; audio leg unshipped (#31) | modes.md Phase 8, #31 |
 | `smart_mode` model swap | toggle-only; swap is v2 scope | #36 cutover notes |
-| Tools-inventory card count | dashboard card lists 5 tools; 7 ship | file/update issue in wrap-up |
+| Tools-inventory card count | dashboard card may list 5 legacy entries; Pi registers 7 voice tools | treat the dashboard as stale presentation, verify Pi inventory separately |
 
 ---
 
@@ -115,7 +115,7 @@ issues rather than spawning new ones, and their clips are candidate
 
 | ID | Brett does (on camera) | Expected — eyes/video | Expected — logs (Claude) | Shorts framing |
 |---|---|---|---|---|
-| UT1 | Tell her a keepable fact: *"my favourite colour is purple"* | Warm acknowledgement | `[REMEMBER:]` marker → `remember` write to brain.db (`category=core`) | Part 1 of the memory two-parter |
+| UT1 | Tell her a keepable fact: *"please remember my favourite colour is purple"* | Warm acknowledgement after the write | `remember` tool call → brain.db write (`category=core`) | Part 1 of the memory two-parter |
 | UT2 | New turn (or later in session): *"what did I tell you about my favourite colour?"* | She recalls purple | `memory_lookup` tool call + FTS5 hit | Part 2 — "she actually remembered" payoff |
 | UT3 | *"Remember that Brett loves flat whites"* (adult) | Confirms she'll remember | `remember_person` → behaviour `person_review_status` → `person:` store | "Dotty is learning who I am" |
 | UT4 | Same as UT3 but for a **kid's** name | Confirms, but fact goes to the **pending** queue, not live | classifier routes to `person_pending:`; visible later in dashboard Memory card (UD5) | QA-critical (child-safety path); clip optional |
@@ -155,11 +155,11 @@ face events and survive chat-turn ends; `wake up` / `come back` /
 |---|---|---|---|---|
 | UL1 | Dashboard: kid_mode ON, then OFF | Pixel 8 warm pink ≤1 s; dashboard dot matches; off→dark | bridge → `/xiaozhi/admin/set-toggle`; `_apply_kid_mode()` hot-reload | "Kid mode: one pink light" |
 | UL2 | With kid_mode ON, ask a borderline question (e.g. about a scary movie) | Kind redirect, age-appropriate | content-filter sandwich; Safety card hit (UD7) | QA-critical; clip only if the redirect is charming |
-| UL3 | With kid_mode ON: *"what do you see?"* | Camera tool **denied** — she declines gracefully | camera-tool denial in kid persona/tool policy | "Kid mode means no photos, ever" — good trust content |
+| UL3 | With kid_mode ON: *"what do you see?"* **⚠ known gap** | Record actual behavior; no live PiVoice camera-denial policy exists yet | verify whether shortcut or `take_photo` ran; file a safety issue if camera access occurs | QA-critical; do not present as a shipped privacy guarantee |
 | UL4 | Dashboard: smart_mode ON, then OFF **⚠ pending** | Pixel 9 orange; dot matches; **no behaviour change** (swap is v2) | `set-toggle smart_mode`; `model_swap_active=False` | QA-only |
 | UL5 | During UL1+UL4, camera close on pixels 7 and 10 | Both stay dark throughout (reserved, locked off) | — | QA-only |
 | UL6 | Voice: *"turn your LEDs blue"* | Only **left** ring goes blue; right-ring pips untouched | `set_led_color` tool call | "She won't let *anyone* touch her status lights" |
-| UL7 | Ask her to set LED **6** red | Pixel 6 unchanged; she demurs (persona: "my lights show how I'm feeling") | serial warn: `set_led_multi: index 6 not on left ring` | tail of UL6 clip |
+| UL7 | Ask her to set LED **6** red | Pixel 6 unchanged; record the verbal response | serial warn if firmware receives `set_led_multi`; PiVoice has no LED voice tool | tail of UL6 clip |
 | UL8 | The combined-indicator stress test: kid ON + smart ON + face identified (green 6) + trigger dance + speak | Rainbow on the left; right ring holds all four pips (6 green in its 4 s window, 8 pink, 9 orange, 11 red); 7+10 dark; ≤200 ms flicker OK (5 Hz re-assert) | `state_changed` → `dance` | "Every light on at once" — satisfying finale |
 
 **☕ Break point.** Leave capture + screen recording running (or stop and
@@ -202,7 +202,7 @@ dashboard works well for Shorts).
 | UD3 | Idle → **Emojis** row: press several of the 9 | Robot's face changes per press | `/ui/actions/mood` | "A remote control for moods" |
 | UD4 | Talk → **Say** box: type a line, send | Robot speaks it verbatim | `/ui/actions/say` (≤500 chars) | "Making my robot say things" — obvious fun |
 | UD5 | Memory card: find UT4's pending kid fact → **approve** it; **redact** another | Pending → approved queue move; redacted fact gone; `recall_person` now sees the approved one | `/ui/actions/memory/{approve,redact}` | QA-critical (human-review loop); clip optional |
-| UD6 | Tools-inventory card | **Known stale:** lists 5 tools, 7 ship — record FAIL | — | QA-only |
+| UD6 | Tools-inventory card | If it lists 5 legacy entries, record presentation FAIL; separately verify Pi registers all 7 voice tools | Pi RPC/tool-startup evidence is authoritative | QA-only |
 | UD7 | Safety card after UL2 | The kid-mode filter hit from UL2 listed (last 20) | `/ui/safety/recent` | QA-only |
 | UD8 | Activity feed: cycle All / Turns / Events / Errors chips; open the errors modal | Live SSE turns + perception events streaming; errors modal renders | `/ui/events` SSE + `/api/perception/feed`; `/ui/alerts/detail` | B-roll: the feed scrolling during a chat |
 | UD9 | Perception card + vision modal: open latest photo large, download | Latest VLM photo + description, audio caption, last voice line, scene sentence | `/ui/vision/large`, `/ui/vision/photo?download=1` | "What my robot sees" |

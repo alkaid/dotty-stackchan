@@ -9,7 +9,7 @@ description: The pi agent runtime (dotty-pi container), the model matrix, and th
 
 - The "brain" is the **`dotty-pi` Docker container** running the pi coding agent with the `dotty-pi-ext` extension.
 - **`PiVoiceLLM`** (the default xiaozhi LLM provider) translates each voice turn into a pi RPC request via `docker exec -i dotty-pi pi --mode rpc`. TTS-bound text streams back to xiaozhi-server; tool dispatch happens entirely inside the container.
-- The `dotty-pi-ext` extension exposes **five voice tools** to the agent loop: `memory_lookup`, `remember`, `think_hard`, `take_photo`, `play_song`.
+- The `dotty-pi-ext` extension exposes **seven voice tools** to the agent loop: `memory_lookup`, `recall_person`, `remember`, `remember_person`, `think_hard`, `take_photo`, `play_song`.
 - **Which LLM runs which turn:** the pi outer loop targets `qwen3.5:4b` (local llama-swap, ~500 ms warm); `think_hard` escalates directly to `qwen3.6:27b-think` (co-resident on llama-swap). **Smart-mode does NOT swap the backend model on the live `PiVoiceLLM` path** — it flips ambient/behaviour only; the inner-loop model-swap is v2 scope and not wired. (Instant in-process model-swap existed only on the now-removed `Tier1Slim` provider.)
 - One documented alternate voice provider exists: **`OpenAICompat`** (points straight at any OpenAI-compatible endpoint; stateless, no voice tools). See [llm-backends.md](./llm-backends.md).
 
@@ -22,10 +22,10 @@ description: The pi agent runtime (dotty-pi container), the model matrix, and th
 | PiVoiceLLM outer agent loop | `qwen3.5:4b` | local llama-swap | Every voice turn. ~500 ms warm. |
 | pi tool: `think_hard` | `qwen3.6:27b-think` | local llama-swap | Multi-step reasoning; direct POST from dotty-pi-ext, no agent overhead. |
 | pi tool: `memory_lookup` | (no LLM call — FTS5) | brain.db inside dotty-pi | `"do you remember…"` queries. |
-| pi tool: `take_photo` | `google/gemini-2.0-flash-001` (`VLM_MODEL`) | dotty-behaviour → OpenRouter | Camera describe. |
+| pi tool: `take_photo` | `google/gemini-3.1-flash-lite` (`VLM_MODEL`) | dotty-behaviour → OpenRouter | Camera describe. |
 | pi tool: `play_song` | (no LLM call) | Firmware via `/xiaozhi/admin/play-asset` | Song request. |
 | Smart-mode inner loop (`SMART_MODEL`) | `anthropic/claude-sonnet-4-6` | OpenRouter | **Not wired on the live `PiVoiceLLM` path — v2 scope.** Smart-mode flips ambient/behaviour only; it does NOT swap the inner-loop model today. (`SMART_MODEL` is still consumed for dashboard-adjacent calls.) |
-| Vision narrative (security/scene synthesis) | `VISION_MODEL` (`google/gemini-2.0-flash-001`) | OpenRouter | dotty-behaviour internal — camera frame description. |
+| Vision narrative (security/scene synthesis) | `VISION_MODEL` (`google/gemini-3.1-flash-lite`) | OpenRouter | dotty-behaviour internal — camera frame description. |
 | Audio captioning (security mode) | `AUDIO_CAPTION_MODEL` (`google/gemini-2.5-flash`) | OpenRouter | dotty-behaviour internal — ambient sound description. |
 
 ## The pi agent runtime
@@ -48,21 +48,23 @@ Appdata layout on the Docker host:
 ├── agent/
 │   └── models.json          # provider config (llama-swap endpoints + aliases)
 ├── sessions/                # pi session state
-├── persona/                 # Dotty persona files
+├── persona/                 # operator-owned files; not loaded by live voice RPC
 ├── memory/
 │   └── brain.db             # FTS5 full-text store
 └── extensions/
     └── dotty-pi-ext/        # voice-tool extension
 ```
 
-### dotty-pi-ext — the five voice tools
+### dotty-pi-ext — the seven voice tools
 
 `dotty-pi-ext` is the pi extension that exposes Dotty's voice tools to the agent loop. Installed inside the container at `/root/.pi/extensions/dotty-pi-ext/`.
 
 | Tool | What it does |
 |---|---|
 | `memory_lookup(query)` | FTS5 search against `brain.db`; returns top-3 snippets, ≤200 chars each. |
+| `recall_person(name)` | Retrieves approved memory facts for a named household member. |
 | `remember(fact)` | Stores a durable fact (≤300 codepoints) into `brain.db` with `category=core`, `importance=0.7`. |
+| `remember_person(name, fact)` | Stores a durable fact in a named household member's memory namespace. |
 | `think_hard(question)` | Direct POST to llama-swap `qwen3.6:27b-think` (`enable_thinking=false`, 200-token cap, terse answer). |
 | `take_photo()` | GET to `dotty-behaviour /api/voice/take_photo` — returns latest cached vision description if ≤30 s old. |
 | `play_song(name)` | Resolves free-form name against `/xiaozhi/admin/songs` catalogue (60 s cache), then POSTs `/xiaozhi/admin/play-asset`. |
@@ -94,15 +96,17 @@ Previously used by the ZeroClawLLM provider via OpenRouter. Not used in the curr
 
 Qwen3 is multilingual by training and occasionally **leaks Chinese mid-response** when context is long or system-prompt adherence is weakened by MoE expert routing. Observed symptom: the model starts a response in English and drops a Chinese character or phrase partway through; `en-*` EdgeTTS voices return silent audio on non-English input, making it sound like a dead mic.
 
-**Mitigation in the current stack:**
-
-1. The pi agent persona (`persona/dotty_voice.md`) has English hard rules.
-2. xiaozhi-server's top-level `prompt:` in `data/.config.yaml` is also English-only.
-3. `custom-providers/textUtils.py` appends a per-turn English-only suffix (used by PiVoiceLLM).
+**Mitigation in the current stack:** `custom-providers/textUtils.py` appends
+an English-only suffix to every live PiVoiceLLM turn. Pi is invoked with
+`--no-context-files`, and PiVoiceLLM forwards the last user message rather than
+xiaozhi-server's configured system dialogue, so neither the operator persona
+files nor `.config.yaml`'s top-level `prompt:` is an additional live-path
+layer. English-only remains model-enforced; unlike the leading emoji, it does
+not have a deterministic output validator.
 
 ### qwen3.5:4b (pi outer agent loop)
 
-Local on llama-swap (dual RTX 3060). Fast: ~500 ms warm round-trip including TTS dispatch. Trained for tool calling, which is what lets the five-tool catalogue work reliably at 4 B parameters. See the dotty-pi-ext tool table above.
+Local on llama-swap (dual RTX 3060). Fast: ~500 ms warm round-trip including TTS dispatch. Trained for tool calling, which is what lets the seven-tool catalogue work at 4 B parameters. See the dotty-pi-ext tool table above.
 
 ### qwen3.6:27b-think (think_hard target)
 
@@ -111,7 +115,7 @@ Local on the same llama-swap, separate alias. ~18 tok/s generation, ~30–50 s c
 ### Cloud models (smart_mode + visual + audio)
 
 - **Smart-mode inner loop:** `anthropic/claude-sonnet-4-6` (`SMART_MODEL` env var). **Not wired on the live `PiVoiceLLM` path** — the inner-loop model-swap is v2 scope; smart-mode currently flips ambient/behaviour only. The env var is still read for dashboard-adjacent calls.
-- **VLM (`take_photo`, security camera frames):** `google/gemini-2.0-flash-001` (`VLM_MODEL`). Served by dotty-behaviour.
+- **VLM (`take_photo`, security camera frames):** `google/gemini-3.1-flash-lite` (`VLM_MODEL`). Served by dotty-behaviour.
 - **Audio captioning (security mode):** `google/gemini-2.5-flash` (`AUDIO_CAPTION_MODEL`). Served by dotty-behaviour.
 
 ## OpenRouter

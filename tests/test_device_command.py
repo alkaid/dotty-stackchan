@@ -205,7 +205,9 @@ class TestHttpServerWiring(unittest.TestCase):
             type(self).active["dev-1"] = conn
             srv = self._server()
             r1 = await srv._dotty_set_state(self._request({"state": "sleep"}))
+            self.assertEqual(conn._dotty_desired_state, "sleep")
             r2 = await srv._dotty_set_state(self._request({"state": "idle"}))
+            self.assertEqual(conn._dotty_desired_state, "idle")
             self.assertEqual((r1.status, r2.status), (200, 200))
             # Sends are _spawn()-ed fire-and-forget; let the tasks run.
             await asyncio.sleep(0.02)

@@ -55,8 +55,8 @@ With Piper TTS and the default local model, nothing leaves your LAN. The trade-o
 **Kid Mode is ON by default** (`DOTTY_KID_MODE=true`). It applies age-appropriate prompt steering plus a thin blocked-words filter on spoken output (see the honest caveat below). You can disable it with `DOTTY_KID_MODE=false` for general-purpose use.
 
 What Kid Mode enforces:
-- Per-turn sandwich enforcement forces the LLM to respond in English with an emoji prefix, which limits the scope of unexpected output.
-- The persona prompt (`personas/dotty_voice.md`) defines the robot's personality and boundaries with kid-safe defaults.
+- The per-turn sandwich instructs the LLM to respond in English and Kid Mode style; code guarantees the emoji prefix, while English and topic adherence remain model-enforced.
+- PiVoiceLLM's versioned per-turn suffix defines the live child-safety and response-style policy.
 - Content and tone are constrained to be age-appropriate.
 - A blocked-words filter runs on TTS-bound LLM output ([#157](https://github.com/BrettKinny/dotty-stackchan/issues/157)): if a reply matches the blocklist (profanity, explicit content, hard drugs), the turn is replaced with a cheerful redirect before it's spoken. The same blocklist guards the dashboard say/story ingresses.
 
@@ -71,9 +71,7 @@ This is a self-hosted system — you control the prompt, the model, and every lo
 
 ### Can I change the robot's personality?
 
-Yes. The persona is a Markdown file — `personas/dotty_voice.md`, loaded by the active LLM provider. Edit it and restart the relevant container.
-
-There's also a secondary `prompt:` key in `data/.config.yaml` that gets injected as a system message — a useful place for voice-pipeline-level hints. Full instructions: [cookbook/change-persona.md](./cookbook/change-persona.md).
+It depends on the provider. `OpenAICompat` loads its configured Markdown persona and xiaozhi system dialogue. The default PiVoiceLLM currently does neither: it sends the last user message plus the versioned policy in `pi_voice.py`/`textUtils.py`. See [change persona](./cookbook/change-persona.md) for the supported options and current limitation.
 
 ---
 

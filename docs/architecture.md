@@ -68,7 +68,7 @@ Solid arrows are per-turn data flow; dotted arrows are cloud / conditional. All 
 | **dotty-behaviour** | Docker host | Perception event bus, 11 consumer classes (the running set is config-gated), vision/audio explain endpoints, proactive greeter, calendar context | FastAPI container, port 8090 |
 | **bridge.py** | Docker host | Admin dashboard service (`/ui`, port 8081). Voice and perception roles were retired in #36; dashboard port to dotty-behaviour is pending. | FastAPI container, port 8081 |
 | **llama-swap** | Same host or LAN GPU host | Routes OpenAI-compatible requests to per-model llama-server children; co-loads `qwen3.5:4b` (pi outer loop) and `qwen3.6:27b-think` (`think_hard` target) | Docker container (`ghcr.io/mostlygeek/llama-swap:cuda`) |
-| **OpenRouter** | Cloud | Routes cloud LLM calls (smart_mode `claude-sonnet-4-6`, VLM `gemini-2.0-flash`, audio caption `gemini-2.5-flash`) | External |
+| **OpenRouter** | Cloud | Routes cloud LLM calls (smart_mode `claude-sonnet-4-6`, VLM `gemini-3.1-flash-lite`, audio caption `gemini-2.5-flash`) | External |
 
 ## Data flow (single utterance, PiVoiceLLM — normal turn)
 
@@ -122,7 +122,7 @@ sequenceDiagram
     BH-->>PI: latest cached vision description
 ```
 
-The five voice tools in `dotty-pi-ext`: `memory_lookup`, `remember`, `think_hard`, `take_photo`, `play_song`. See [brain.md](./brain.md) for the full tool catalogue.
+The seven voice tools in `dotty-pi-ext`: `memory_lookup`, `recall_person`, `remember`, `remember_person`, `think_hard`, `take_photo`, `play_song`. See [brain.md](./brain.md) for the full tool catalogue.
 
 ## Why this shape
 
@@ -148,7 +148,7 @@ It does **not** know about llama-swap model names, brain.db, or OpenRouter keys.
 
 **dotty-pi (pi agent)** knows:
 - The llama-swap endpoint and model aliases (via `models.json` inside the container)
-- The `dotty-pi-ext` extension with the five voice tools
+- The `dotty-pi-ext` extension with the seven voice tools
 - The persona files and `brain.db` (mounted from host appdata)
 
 It does **not** know about the xiaozhi WebSocket protocol or audio.
@@ -236,7 +236,7 @@ The canonical working copies live in this repo.
 | File / Directory | Deployed to | Purpose |
 |---|---|---|
 | `dotty-pi/` | Docker host `/mnt/user/appdata/dotty-pi-src/` | pi agent container (Dockerfile + docker-compose.yml) |
-| `dotty-pi-ext/` | Docker host (bind-mounted into dotty-pi) | dotty-pi-ext extension — five voice tools |
+| `dotty-pi-ext/` | Docker host (bind-mounted into dotty-pi) | dotty-pi-ext extension — seven voice tools |
 | `dotty-behaviour/` | Docker host `/mnt/user/appdata/dotty-behaviour-src/` | Perception + ambient behaviour container |
 | `bridge.py` | Docker host (bridge.py container) | Admin dashboard FastAPI service |
 | `bridge/requirements.txt` | bridge.py container | Pinned Python deps |

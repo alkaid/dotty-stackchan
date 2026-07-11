@@ -16,8 +16,8 @@ Symptom-first lookup table covering common and obscure failure modes. Pair with 
 **Cause:** Language mismatch between the TTS voice and the response text. EdgeTTS `en-*` voices return empty audio when given non-English text (Chinese, Japanese, etc.). This is not a throttle or rate limit — it's a silent failure in the EdgeTTS service.
 
 **Fix:**
-1. Check the xiaozhi-server logs for the LLM response text. If it contains non-English characters, the LLM is ignoring the English enforcement in the persona prompt and the `.config.yaml` `prompt:` block.
-2. Confirm English enforcement is active: check `personas/dotty_voice.md` and the top-level `prompt:` in `data/.config.yaml` both contain explicit English-only instructions.
+1. Check the xiaozhi-server logs for the LLM response text. On PiVoiceLLM, non-English text means the model ignored the per-turn `build_turn_suffix()` policy.
+2. Confirm `custom-providers/pi_voice/pi_voice.py` appends `build_turn_suffix()` to the prompt. PiVoiceLLM uses `--no-context-files` and does not forward xiaozhi's system dialogue, so persona and `.config.yaml` prompt edits do not diagnose this provider.
 3. Check `data/.config.yaml` to confirm the TTS voice matches the expected response language (e.g., `en-AU-WilliamNeural` for English).
 4. If using Piper TTS instead of EdgeTTS, confirm the selected voice model matches the response language.
 
@@ -27,14 +27,13 @@ Symptom-first lookup table covering common and obscure failure modes. Pair with 
 
 **Symptom:** The robot speaks, but in the wrong language. Logs show Chinese or Japanese text in the LLM response.
 
-**Cause:** The LLM (Qwen3) is ignoring the system prompt's language constraint. This is a known weakness — Qwen3 tends to leak Chinese on long-context English-only prompts, especially mid-session.
+**Cause:** The LLM (Qwen3) is ignoring the per-turn language constraint. Qwen3 can leak Chinese despite the English-only suffix; English has no deterministic output validator.
 
 **Fix:**
 1. Confirm the per-turn sandwich enforcement is active on the live `PiVoiceLLM` path. Static system prompts alone are not enough — every turn is wrapped with an explicit English+emoji suffix. This is `build_turn_suffix()` in `custom-providers/textUtils.py`, applied by `custom-providers/pi_voice/pi_voice.py` (`_wrap_with_sandwich`). (The old `bridge.py::_build_sandwich_prompt` was part of the retired ZeroClaw bridge and no longer exists — the bridge is not in the voice path.)
-2. Confirm the persona prompt reinforces English-only: check `personas/dotty_voice.md` (loaded by the `dotty-pi` agent) and the top-level `prompt:` block in `data/.config.yaml`.
-3. Watch the actual voice path while testing — tail the `dotty-pi` container logs (`docker logs -f dotty-pi`) and the xiaozhi-server logs, not the bridge.
-4. If the leak happens on the first turn, check the persona file (`personas/dotty_voice.md`) for any non-English text.
-5. As a last resort, the ASR may be mis-transcribing English as another language. Check the `ASR.FunASR.language` key in `data/.config.yaml` is set to `en` (not `auto`).
+2. Inspect the prompt captured by PiVoiceLLM or its unit tests; do not use persona files or the top-level `.config.yaml` prompt as evidence for this path.
+3. Watch the actual voice path in xiaozhi-server logs. `docker logs dotty-pi` is normally empty because Pi runs as a `docker exec` child; PiClient owns that child's stdio.
+4. As a last resort, the ASR may be mis-transcribing English as another language. Check the configured ASR language is `en` rather than `auto`.
 
 ---
 
@@ -111,9 +110,9 @@ Symptom-first lookup table covering common and obscure failure modes. Pair with 
 | `😴` | Sleepy |
 
 **Fix:**
-1. Check the xiaozhi-server logs for the raw LLM response. Two enforcement layers apply: (a) the configured persona prompt (`personas/dotty_voice.md`), (b) the `prompt:` key in `data/.config.yaml`. If the response still has no emoji after both layers, something is fundamentally wrong with the response path.
+1. Check the xiaozhi-server logs for the raw LLM response. PiVoiceLLM's per-turn suffix requests an allowed emoji and `_enforce_leading_emoji()` prepends neutral `😐` when it is absent. A prefix-free response therefore indicates the deployed provider is stale or bypassed.
 2. If the response has an emoji but the face doesn't change, it may be an unsupported emoji. Only the nine listed above are mapped to animations.
-3. On the `PiVoiceLLM` path the `_ensure_emoji_prefix` fallback in `bridge.py` is not active — emoji enforcement relies entirely on the persona prompt and the `.config.yaml` `prompt:` block.
+3. Confirm the selected provider is PiVoiceLLM and the deployed `pi_voice.py` contains `_enforce_leading_emoji()`. The retired bridge fallback is unrelated.
 
 ---
 

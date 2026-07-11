@@ -29,9 +29,9 @@ asks). Only the child-specific rules (4-9) are removed.
 
 ### Hot-reload (no daemon restart)
 
-Both the bridge dashboard's `POST /admin/kid-mode` endpoint and the dashboard toggle persist the new value and call `_apply_kid_mode(enabled)`, which re-binds the dashboard's kid-mode globals (`KID_MODE`, `VOICE_TURN_SUFFIX` via `build_turn_suffix(enabled)`). **No dashboard restart is required** to flip the persisted value at runtime. (This is the dashboard's own state; the live voice path reads kid-mode independently — see below.)
+Both the bridge dashboard's `POST /admin/kid-mode` endpoint and the dashboard toggle persist the new value to the shared `DOTTY_KID_MODE_STATE` file and call `_apply_kid_mode(enabled)`, which re-binds the dashboard's kid-mode globals (`KID_MODE`, `VOICE_TURN_SUFFIX` via `build_turn_suffix(enabled)`). **No dashboard restart is required** to flip the persisted value at runtime.
 
-The xiaozhi-server side of kid-mode lives in the active LLM provider's persona / suffix. On the live `PiVoiceLLM` path, `pi_voice.py` reads kid-mode as a process-start snapshot and bakes it into the suffix produced by `build_turn_suffix(kid_mode)`; the persona is loaded per-session by the `dotty-pi` agent. A persona/topic change lands on the next turn, while flipping the kid-mode snapshot itself requires a container restart to re-read the value into the live provider instance.
+The xiaozhi-server container mounts the same state file read-only. On the live `PiVoiceLLM` path, `pi_voice.py` re-reads it at the start of every voice turn and passes the result to both `build_turn_suffix(kid_mode)` and the output filter. A dashboard toggle therefore changes the live voice guardrails on the next turn without restarting either container. If the state file is absent, unreadable, or malformed, the provider falls back to `DOTTY_KID_MODE` (which defaults to `true`). Pi is invoked with `--no-context-files`, so files in the dotty-pi persona directory are not loaded into live voice turns.
 
 ## Guardrail details
 
@@ -40,44 +40,25 @@ enforcement code lives, and what gaps remain.
 
 ---
 
-## Architecture: Three-Layer Sandwich Enforcement
+## Architecture: Live Runtime Enforcement
 
-Every voice turn passes through three independent layers before reaching the
-speaker. Each layer reinforces the same rules so that a failure in one layer
-is caught by the next.
+Every live `PiVoiceLLM` turn uses one versioned prompt-policy layer followed
+by deterministic output backstops where those backstops are implemented.
 
 > **Layering on the live `PiVoiceLLM` path:**
-> - **Layer 1** is `personas/dotty_voice.md` (loaded by the `dotty-pi` agent).
-> - **Layer 2** is the `prompt:` block in `.config.yaml` injected by xiaozhi-server.
-> - **Layer 3** is the per-turn **sandwich suffix** — `build_turn_suffix(kid_mode)` from `custom-providers/textUtils.py`, applied by `custom-providers/pi_voice/pi_voice.py` (`_wrap_with_sandwich`). This **ships on the live path** and includes the kid-mode topic constraints (rules below) when kid-mode is on.
+> - **Prompt policy** is the per-turn **sandwich suffix** — `build_turn_suffix(kid_mode)` from `custom-providers/textUtils.py`, applied by `custom-providers/pi_voice/pi_voice.py` (`_wrap_with_sandwich`). It includes the kid-mode topic constraints (rules below) when kid-mode is on.
+> - **Emoji backstop** is `_enforce_leading_emoji()` in `pi_voice.py`, which guarantees an allowed leading face glyph independently of model compliance.
 > - **Output backstop:** `filter_tts_stream()` in `custom-providers/textUtils.py` buffers the complete Kid Mode reply, checks the shared blocked-words tiers, and replaces a matching turn before TTS. Both `PiVoiceLLM` and `OpenAICompat` use it. This is a thin, bypassable word-level backstop, not a content-safety guarantee; live red-team verification remains tracked in #157.
+>
+> PiVoiceLLM forwards only the last user message plus this per-turn policy. Its
+> Pi command uses `--no-context-files`; neither `personas/dotty_voice.md` nor
+> xiaozhi-server's top-level `.config.yaml` `prompt:` is injected into this RPC
+> request. Those files may apply to other providers but are not live
+> PiVoiceLLM enforcement layers.
 >
 > The `Tier1Slim` provider was removed entirely and is no longer a live or rollback option.
 
-### Layer 1 -- Agent Persona Prompt (dotty-pi container)
-
-The `dotty-pi` agent's persona prompt (`personas/dotty_voice.md`) sets the baseline: stay cheerful,
-age-appropriate, begin every reply with an emoji. This is the "inner" system
-prompt that the LLM sees at the top of its context.
-
-### Layer 2 -- xiaozhi-server System Prompt (server)
-
-The `prompt:` block in `.config.yaml` is injected by xiaozhi-server as a
-system message. It reinforces the emoji rule and the short-sentence,
-TTS-friendly style. Relevant excerpt:
-
-```yaml
-prompt: |
-  You are <ROBOT_NAME>, a small desktop robot assistant for a curious family
-  with young children.
-  ...
-  Critical output rules:
-  - ALWAYS begin your reply with exactly one emoji that conveys your emotion.
-  - Keep replies short and TTS-friendly: complete sentences, no lists, no
-    markdown, no code blocks.
-```
-
-### Layer 3 -- Per-Turn Sandwich Suffix (`build_turn_suffix` in `textUtils.py`)
+### Per-Turn Sandwich Suffix (`build_turn_suffix` in `textUtils.py`)
 
 On the live `PiVoiceLLM` path, every turn has a suffix appended before being
 sent to the LLM:
@@ -96,10 +77,10 @@ the hardest to override. When `kid_mode` is true the suffix carries the full
 child-safe topic constraints (rules 4-9 below); when false, only the
 English-only / emoji-leader / length rules remain.
 
-**Why a suffix, not just a system prompt?** System prompts are seen once and
-can be diluted by long conversations. The suffix is re-injected on every
-single turn, and its position at the end of the context window gives it
-disproportionate influence on the model's output.
+**Why a suffix?** PiVoiceLLM does not forward xiaozhi's system dialogue and
+disables Pi context files. The suffix is therefore the versioned policy that
+is re-injected on every turn, and its position at the end of the prompt gives
+it disproportionate influence on the model's output.
 
 ### Post-generation blocked-words backstop
 
@@ -219,16 +200,17 @@ additional layers are needed).
 
 The emoji that begins each reply is not decorative -- the StackChan firmware
 parses it into a facial expression on the robot's screen. If the emoji is
-missing, the face stays blank. Three layers enforce it:
+missing, the face stays blank. The live path has two enforcement points:
 
-1. **Agent persona prompt** (`personas/dotty_voice.md`, loaded by `dotty-pi`) -- tells the model to begin with an emoji.
-2. **xiaozhi-server system prompt** (`.config.yaml` `prompt:` block) --
-   repeats the rule with the exact emoji set.
-3. **Per-turn suffix rule 2** (`build_turn_suffix` in `custom-providers/textUtils.py`) -- restates the exact emoji set at the end of every turn.
+1. **Per-turn suffix rule 2** (`build_turn_suffix` in `custom-providers/textUtils.py`) instructs the model with the exact emoji set at the end of every turn.
+2. **Programmatic output enforcement** (`_enforce_leading_emoji()` in `custom-providers/pi_voice/pi_voice.py`) guarantees an allowed leading glyph.
 
-There is **no programmatic emoji fallback** on the live path. The old
-`_ensure_emoji_prefix` was ZeroClaw-only and is gone; the three prompt layers
-above are load-bearing.
+`PiVoiceLLM` also enforces the contract programmatically before its output
+reaches the Kid Mode content filter or TTS. `_enforce_leading_emoji()` buffers
+leading whitespace, preserves an allowed face emoji, and replaces a missing
+or disallowed leading emoji with the neutral `😐` fallback. The per-turn prompt
+remains the primary instruction; this output guard is the deterministic
+backstop.
 
 Allowed emojis and their face mappings:
 
@@ -244,10 +226,8 @@ Allowed emojis and their face mappings:
 | 😍 | love |
 | 😴 | sleepy |
 
-Error responses on the live `PiVoiceLLM` path are plain text (e.g.
-`(brain offline — try again in a moment)` in `pi_voice.py`); they are not
-forced to carry an emoji, since the ZeroClaw fallback that prepended `😐` is
-gone.
+Error and empty responses on the live `PiVoiceLLM` path also carry the neutral
+face prefix, for example `😐 (brain offline — try again in a moment)`.
 
 ---
 
@@ -255,7 +235,7 @@ gone.
 
 When things go wrong, the system defaults to a safe canned reply rather than
 exposing raw error text or going silent. On the live `PiVoiceLLM` path the
-`dotty-pi`-unavailable case yields `(brain offline — try again in a moment)`
+`dotty-pi`-unavailable case yields `😐 (brain offline — try again in a moment)`
 (hardcoded in `custom-providers/pi_voice/pi_voice.py`), independent of LLM
 cooperation. The detailed per-failure-mode emoji-prefixed canned replies
 listed in earlier docs belonged to the retired ZeroClaw bridge and no longer
@@ -283,19 +263,17 @@ inappropriate content through).
 
 ## Where the Code Lives
 
-The live `PiVoiceLLM` path layers the persona prompt and the per-turn sandwich
-suffix. There is no live bridge involvement.
+The live `PiVoiceLLM` path uses the per-turn sandwich and output backstops.
+There is no live bridge prompt or persona-file involvement.
 
 | Component | File | Symbol |
 |---|---|---|
 | Per-turn sandwich suffix (the live sandwich) | `custom-providers/textUtils.py` | `build_turn_suffix(kid_mode)` |
 | Sandwich injection on the voice path | `custom-providers/pi_voice/pi_voice.py` | `_wrap_with_sandwich()` (calls `build_turn_suffix`) |
 | Emoji → emotion lookup | `custom-providers/textUtils.py` | `EMOJI_MAP`, `get_emotion()` |
-| dotty-pi-unavailable canned reply | `custom-providers/pi_voice/pi_voice.py` | `(brain offline — try again in a moment)` |
-| xiaozhi system prompt | `data/.config.yaml` | Top-level `prompt:` block |
-| Agent persona prompt | `personas/dotty_voice.md` | loaded by the `dotty-pi` agent |
+| dotty-pi-unavailable canned reply | `custom-providers/pi_voice/pi_voice.py` | `😐 (brain offline — try again in a moment)` |
 | Blocked-words content filter | `custom-providers/textUtils.py` | `content_filter_match()`, `filter_tts_stream()`; shared by both live LLM providers and enabled only in Kid Mode. |
-| Emoji-prefix fallback | — | **Absent.** Was `_ensure_emoji_prefix()` in the retired ZeroClaw bridge; prompt layers are now load-bearing. |
+| Emoji-prefix fallback | `custom-providers/pi_voice/pi_voice.py` | `_enforce_leading_emoji()` |
 
 ---
 
@@ -337,7 +315,7 @@ is to route the `stackchan` channel to a model with stronger built-in safety
 
 ### Modifying the Topic Blocklist
 
-Edit the suffix text in `build_turn_suffix()` in `custom-providers/textUtils.py` (rule 5), and/or edit rule 5 in `personas/dotty_voice.md`. After editing, restart the xiaozhi-server container.
+Edit rule 5 in `build_turn_suffix()` in `custom-providers/textUtils.py`, then redeploy or restart the xiaozhi-server container.
 
 ### Changing the Self-Harm Response
 
@@ -348,7 +326,7 @@ wording was chosen to acknowledge distress without attempting counseling.
 
 1. Update rule 2 in `build_turn_suffix()` (`custom-providers/textUtils.py`) to add or remove emojis.
 2. Update `EMOJI_MAP` in `custom-providers/textUtils.py` so the new emoji maps to an emotion.
-3. Update the `prompt:` block in `data/.config.yaml` and the persona prompt to match.
+3. Update `ALLOWED_EMOJIS` in `custom-providers/textUtils.py`, which controls the programmatic prefix check.
 4. Confirm the StackChan firmware supports the face mapping for any new emoji.
 
 ### Changing the Age Range
@@ -361,9 +339,9 @@ adjusting downward would further simplify language.
 
 ## Design Principles
 
-- **Defense in depth.** No single layer is trusted alone. The persona prompt,
-  the xiaozhi system prompt, and the per-turn sandwich suffix each
-  independently restate the core rules.
+- **Defense in depth where deterministic checks exist.** The per-turn suffix
+  steers all safety and style rules; deterministic code additionally enforces
+  the leading emoji and blocks a small set of output terms in Kid Mode.
 - **Fail safe, not fail open.** Error paths produce a safe canned reply rather
   than raw error text or stack traces reaching the speaker.
 - **Suffix position is deliberate.** Placing the hard constraints at the end

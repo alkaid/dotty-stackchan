@@ -19,7 +19,7 @@ and the matching block under `LLM:` in `.config.yaml`.
 | **Cost** | Pay-per-token | Free (electricity + hardware) | Free (electricity + hardware) |
 | **Privacy** | Tokens sent to cloud provider | Fully local, nothing leaves LAN | Fully local |
 | **Setup complexity** | Low — API key + model name | Medium — GPU, Docker, GGUF download | Medium — dotty-pi container + llama-swap |
-| **Memory / tools** | None | None | Yes — memory_lookup, remember, think_hard, take_photo, play_song |
+| **Memory / tools** | None | None | Yes — memory_lookup, recall_person, remember, remember_person, think_hard, take_photo, play_song |
 | **Hot-swappable** | Restart container | Restart container | Restart container |
 | **Best for** | Quick start, best-in-class models | Privacy + concurrent multi-model serving | **Default — snappy voice with full tool support** |
 
@@ -132,17 +132,20 @@ LLM:
 
 The default in the shipped `.config.yaml`. The `PiVoiceLLM` provider routes each voice turn to the **dotty-pi container** — the pi coding agent running on the same Docker host as xiaozhi-server.
 
-`PiClient` drives the agent by running `docker exec -i dotty-pi pi --mode rpc …` and exchanging JSONL messages over its stdin/stdout. The agent's outer loop uses `qwen3.5:4b` on local llama-swap for fast chitchat and loads the **dotty-pi-ext extension**, which exposes five voice-focused tools:
+`PiClient` drives the agent by running `docker exec -i dotty-pi pi --mode rpc … --no-context-files` and exchanging JSONL messages over its stdin/stdout. The agent's outer loop uses `qwen3.5:4b` on local llama-swap for fast chitchat and loads the **dotty-pi-ext extension**, which exposes seven voice-focused tools:
 
 | Tool | Purpose |
 |---|---|
 | `memory_lookup` | Recall a fact from past conversations (FTS on brain.db) |
+| `recall_person` | Recall approved facts about a named household member |
 | `remember` | Stash a new fact into brain.db |
+| `remember_person` | Store a fact about a named household member |
 | `think_hard` | Escalate a hard question to `qwen3.6:27b-think` |
 | `take_photo` | Describe what Dotty's camera sees via a VLM |
 | `play_song` | Play a song through the speaker |
 
 Only TTS-bound text streams back to xiaozhi-server — tool results stay internal to the agent loop.
+PiVoiceLLM does not use `persona_file` or forward xiaozhi's configured system dialogue; its live policy is appended to every user turn by the provider.
 
 ### Prerequisites
 

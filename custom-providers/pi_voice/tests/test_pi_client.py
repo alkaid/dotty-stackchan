@@ -212,6 +212,38 @@ class TestThinkingFilter(unittest.TestCase):
             client.close()
 
 
+class TestToolCallTelemetry(unittest.TestCase):
+    def test_completed_tool_call_is_logged_at_info_without_arguments(self):
+        fake = FakePopen()
+        client = make_client(fake)
+        try:
+            def feed():
+                fake.emit({
+                    "id": "turn-1", "type": "response",
+                    "command": "prompt", "success": True,
+                })
+                fake.emit({
+                    "type": "message_update",
+                    "assistantMessageEvent": {
+                        "type": "toolcall_end",
+                        "toolCall": {
+                            "type": "toolCall", "id": "tool-7",
+                            "name": "remember", "arguments": {"fact": "private"},
+                        },
+                    },
+                })
+                fake.emit({"type": "agent_end"})
+
+            threading.Thread(target=feed, daemon=True).start()
+            with self.assertLogs("pi_client", level="INFO") as logs:
+                self.assertEqual(list(client.iter_turn_text("remember this")), [])
+            joined = "\n".join(logs.output)
+            self.assertIn("tool call name=remember id=tool-7", joined)
+            self.assertNotIn("private", joined)
+        finally:
+            client.close()
+
+
 class TestUiAutoCancel(unittest.TestCase):
     def test_dialog_methods_get_auto_cancelled(self):
         fake = FakePopen()

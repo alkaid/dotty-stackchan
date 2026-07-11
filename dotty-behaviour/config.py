@@ -168,7 +168,9 @@ DREAM_INSPIRATIONS: tuple[str, ...] = (
 # image_url content block. Defaults mirror bridge.py so an existing
 # OpenRouter key continues to work.
 # ---------------------------------------------------------------------------
-VISION_MODEL: str = os.environ.get("VISION_MODEL", "google/gemini-2.0-flash-001")
+VISION_MODEL: str = os.environ.get(
+    "VISION_MODEL", "google/gemini-3.1-flash-lite"
+)
 VISION_API_URL: str = os.environ.get(
     "VISION_API_URL", "https://openrouter.ai/api/v1/chat/completions"
 )

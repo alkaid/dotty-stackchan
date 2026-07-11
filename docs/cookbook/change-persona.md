@@ -5,14 +5,14 @@ description: Swap Dotty's personality by editing the persona prompt or pointing 
 
 # Change Persona
 
-Dotty's personality comes from a persona file loaded as the LLM system prompt. **Where** that file lives depends on which LLM provider is active.
+Persona-file support depends on which LLM provider is active.
 
 Three personas ship in `personas/`:
 
 | File | Style | Used by |
 |---|---|---|
 | `default.md` | Cheerful, curious desktop robot. The general-purpose persona for generic providers. | `OpenAICompat` |
-| `dotty_voice.md` | Voice-tuned variant of `default.md` — same character but pruned for short replies, with the tool catalogue and `[REMEMBER: ...]` markers baked in. | `PiVoiceLLM` |
+| `dotty_voice.md` | Voice-tuned reference persona retained for providers or future workflows that load context files. | Not loaded by current PiVoiceLLM |
 | `smart.md` | More capable, allowed longer answers — for when `smart_mode` is on and the cloud model is doing the heavy lifting. | optional override |
 
 ## Which file controls the persona?
@@ -21,12 +21,12 @@ Check `selected_module.LLM` in `.config.yaml`, then read the matching block:
 
 | Provider | Persona source |
 |---|---|
-| `PiVoiceLLM` (current default) | The persona file configured in the pi agent's extension (`dotty-pi-ext`). Defaults to `personas/dotty_voice.md`. |
+| `PiVoiceLLM` (current default) | No persona file. It forwards the last user message plus versioned per-turn policy from `pi_voice.py`/`textUtils.py`; Pi runs with `--no-context-files`. |
 | `OpenAICompat` (and similar generic providers) | `LLM.OpenAICompat.persona_file` in `.config.yaml`. |
 
 ## Switch to a different shipped persona
 
-1. Edit `.config.yaml` (or the pi agent persona config for `PiVoiceLLM`):
+1. With `OpenAICompat` selected, edit `.config.yaml`:
 
    ```yaml
    LLM:
@@ -38,15 +38,15 @@ Check `selected_module.LLM` in `.config.yaml`, then read the matching block:
 
 ## Create your own persona
 
-1. Copy an existing file: `cp personas/dotty_voice.md personas/pirate.md`.
+1. Copy an existing file: `cp personas/default.md personas/pirate.md`.
 2. Edit the new file. **Keep the emoji instruction line** — the firmware needs it to animate the face. See [emoji-mapping.md](../emoji-mapping.md) for the allowlist (😊😆😢😮🤔😠😐😍😴).
-3. Point the active provider's `persona_file` at the new file in `.config.yaml`, then restart.
+3. Point `OpenAICompat.persona_file` at the new file in `.config.yaml`, then restart.
 
 ## Quick inline edit (no file swap)
 
-Edit the top-level `prompt:` block in `.config.yaml` directly. This is the xiaozhi-server system prompt; it gets injected alongside the persona file for most providers. On the `PiVoiceLLM` path the pi agent's own persona file (in `dotty-pi-ext`) is the primary source — edit that for substantive personality changes.
+For OpenAICompat, edit the top-level `prompt:` block in `.config.yaml`; xiaozhi includes it with that provider's dialogue. PiVoiceLLM does not forward this dialogue. There is not yet an operator-facing hot-swap workflow for PiVoice personas; changing its behavior requires a reviewed change to the versioned per-turn policy and redeploying xiaozhi-server.
 
 ## Notes
 
-- Always keep the emoji-leader rule in any persona — removing it breaks face animations. The persona prompt and the xiaozhi-server system prompt are the two enforcement layers.
+- For persona-loading providers, retain the emoji-leader rule. PiVoiceLLM additionally guarantees a neutral leading fallback in code.
 - See [protocols.md](../protocols.md) for the emoji → face frame mapping.
