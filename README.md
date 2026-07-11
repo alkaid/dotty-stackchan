@@ -14,7 +14,7 @@
 
 Dotty is a fully self-hosted voice stack for the M5Stack StackChan desktop robot. Open-source firmware on the robot, [xiaozhi-esp32-server](https://github.com/xinnan-tech/xiaozhi-esp32-server) for voice I/O, and a local **pi** coding agent as the brain. ASR, TTS, and session state all run on your own hardware. The LLM is pluggable — the shipped default runs a small fast model for plain conversation and escalates hard questions to a more capable model, with [llama-swap](./docs/cookbook/llama-swap-concurrent-models.md) as the recommended local backend. Swap in [Ollama](./docs/cookbook/run-fully-local.md) for the simpler single-binary option, or point at OpenRouter / any OpenAI-compatible API if you'd rather use the cloud.
 
-Out of the box, Dotty ships in **Kid Mode** — the persona plus a per-turn prompt sandwich keep responses age-appropriate and on-topic. This is prompt-level steering, **not** an output content filter (a blocked-words filter is planned — see [#138](https://github.com/BrettKinny/dotty-stackchan/issues/138)), and it's no substitute for supervision. Disable Kid Mode for a general-purpose assistant.
+Out of the box, Dotty ships in **Kid Mode** — the persona and per-turn prompt sandwich steer responses toward age-appropriate topics, while a thin blocked-words filter replaces matching spoken turns before TTS. The filter is a bypassable backstop, not a safety guarantee or substitute for supervision. Disable Kid Mode for a general-purpose assistant.
 
 ## Why I built this
 
@@ -30,7 +30,7 @@ Full policy: [`AI_TRANSPARENCY.md`](./AI_TRANSPARENCY.md).
 
 ## Features
 
-- **Kid Mode (on by default)** — age-appropriate responses via persona + per-turn prompt steering. An output content filter is planned, not yet shipped ([#138](https://github.com/BrettKinny/dotty-stackchan/issues/138)); Kid Mode is not a substitute for supervision. Toggle off for general-purpose use. See [`docs/kid-mode.md`](./docs/kid-mode.md).
+- **Kid Mode (on by default)** — age-appropriate responses via persona + per-turn prompt steering, backed by a thin blocked-words filter on TTS-bound output ([#157](https://github.com/BrettKinny/dotty-stackchan/issues/157)). It remains bypassable and is not a substitute for supervision. Toggle off for general-purpose use. See [`docs/kid-mode.md`](./docs/kid-mode.md).
 - **Local ASR** — FunASR SenseVoiceSmall by default, no cloud transcription. WhisperLocal auto-selects on GPU hosts (better kid-speech accuracy); SenseVoiceOnnx is a lighter low-RAM option.
 - **Local or cloud TTS** — Piper (offline) or EdgeTTS (cloud). Swap with a config change.
 - **Streaming responses** — the bridge streams LLM output to the voice pipeline for lower perceived latency.

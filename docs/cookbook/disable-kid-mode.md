@@ -16,7 +16,8 @@ Set the environment variable (in `.env` or the shell environment):
 DOTTY_KID_MODE=false
 ```
 
-Restart the bridge container: `docker compose restart bridge`
+Recreate the xiaozhi-server container so the LLM provider reads the new
+environment snapshot.
 
 ## What changes (removed)
 
@@ -40,8 +41,8 @@ Restart the bridge container: `docker compose restart bridge`
 | 2 | Emoji prefix (one of the 9 allowed emojis) |
 | 3 | Default 1-2 short sentences, up to 6 for open-ended asks; TTS-friendly |
 
-The content filter (`_content_filter`) and emoji fallback
-(`_ensure_emoji_prefix`) remain active in both modes.
+The TTS-bound blocked-words filter is disabled with Kid Mode. Emoji-prefix,
+English-only, and response-length constraints remain active.
 
 ## See also
 
