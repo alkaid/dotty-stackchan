@@ -7,6 +7,7 @@ import os
 import re
 import glob
 from typing import Dict, List, Tuple
+from urllib.parse import urlparse
 from aiohttp import web
 
 from core.auth import AuthManager
@@ -14,6 +15,16 @@ from core.utils.util import get_local_ip
 from core.api.base_handler import BaseHandler
 
 TAG = __name__
+
+
+def _download_host(config: dict, fallback: str) -> str:
+    """Return the device-reachable host configured for WebSocket traffic."""
+    websocket_url = config.get("server", {}).get("websocket", "")
+    if websocket_url and "你的" not in websocket_url:
+        hostname = urlparse(websocket_url).hostname
+        if hostname:
+            return hostname
+    return fallback
 
 
 def _safe_basename(filename: str) -> str:
@@ -335,8 +346,9 @@ class OTAHandler(BaseHandler):
                         # device gets handed back the vision endpoint as a download
                         # URL, returning 405.
                         chosen_version = ver
+                        download_host = _download_host(self.config, local_ip)
                         chosen_url = (
-                            f"http://{local_ip}:{http_port}/xiaozhi/ota/download/{fname}"
+                            f"http://{download_host}:{http_port}/xiaozhi/ota/download/{fname}"
                         )
                         break
 
