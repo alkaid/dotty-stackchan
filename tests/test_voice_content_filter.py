@@ -75,14 +75,33 @@ class TestFilterTtsStream(unittest.TestCase):
         out = _run(["😊 I love coc", "aine. It is great."])
         self.assertEqual(out, [REPLACEMENT])
 
-    def test_hit_mid_turn_keeps_earlier_sentences_and_strips_emoji(self):
+    def test_hit_mid_turn_replaces_the_whole_turn_atomically(self):
         out = _run(["😊 Hello there. ", "Anyway, cocaine is fun. ", "More."])
-        self.assertEqual(out[0], "😊 Hello there. ")
-        self.assertEqual(len(out), 2)
-        # One-emoji contract: the mid-turn replacement must not introduce a
-        # second emoji.
-        self.assertFalse(out[1].startswith(FALLBACK))
-        self.assertIn("something fun instead", out[1])
+        self.assertEqual(out, [REPLACEMENT])
+
+    def test_hit_drains_the_source_before_returning(self):
+        consumed = []
+
+        def source():
+            for chunk in ["😊 cocaine. ", "tail after the blocked sentence"]:
+                consumed.append(chunk)
+                yield chunk
+
+        self.assertEqual(list(tu.filter_tts_stream(source(), True)), [REPLACEMENT])
+        self.assertEqual(
+            consumed,
+            ["😊 cocaine. ", "tail after the blocked sentence"],
+            "PiVoice streams must drain through agent_end before the turn returns",
+        )
+
+    def test_highest_tier_wins_across_sentences(self):
+        seen = []
+        out = _run(
+            ["😊 shit happens. ", "Cocaine is worse."],
+            on_hit=lambda tier, match: seen.append((tier, match.group().lower())),
+        )
+        self.assertEqual(out, [REPLACEMENT])
+        self.assertEqual(seen, [("alert", "cocaine")])
 
     def test_hit_in_unterminated_tail_is_caught_on_flush(self):
         # No sentence boundary ever arrives — the flush path must still check.
@@ -174,6 +193,43 @@ class TestPiVoiceWiring(unittest.TestCase):
     def test_kid_off_passthrough(self):
         chunks = ["😊 cocaine is a stimulant."]
         self.assertEqual(self._respond(chunks, False), chunks)
+
+    def test_blocked_turn_is_fully_drained_before_the_next_turn(self):
+        class DrainingClient:
+            def __init__(self):
+                self.turns = iter([
+                    ["😊 cocaine. ", "discarded tail"],
+                    ["😊 Clean next turn."],
+                ])
+                self.completed = 0
+
+            def new_session(self):
+                pass
+
+            def iter_turn_text(self, prompt):
+                yield from next(self.turns)
+                self.completed += 1
+
+            def recent_stderr(self):
+                return []
+
+            def close(self):
+                pass
+
+        client = DrainingClient()
+        with patch.dict(os.environ, {"DOTTY_KID_MODE": "true"}):
+            provider = self.LLMProvider({}, client=client)
+
+        self.assertEqual(
+            list(provider.response("s", [{"role": "user", "content": "first"}])),
+            [REPLACEMENT],
+        )
+        self.assertEqual(client.completed, 1)
+        self.assertEqual(
+            list(provider.response("s", [{"role": "user", "content": "second"}])),
+            ["😊 Clean next turn."],
+        )
+        self.assertEqual(client.completed, 2)
 
 
 class TestOpenAICompatWiring(unittest.TestCase):

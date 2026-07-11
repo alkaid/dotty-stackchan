@@ -146,9 +146,9 @@ class LLMProvider(LLMProviderBase):
 
         try:
             # #157: kid-mode blocked-content filter on TTS-bound output.
-            # Sentence-buffered — nothing reaches TTS before its sentence is
-            # checked; a hit replaces the rest of the turn. kid_mode off is a
-            # transparent passthrough.
+            # Full-turn buffered — the filter drains the pi RPC stream through
+            # agent_end before making an atomic allow/replace decision.
+            # kid_mode off is a transparent passthrough.
             for chunk in filter_tts_stream(
                 self._client.iter_turn_text(prompt),
                 self._kid_mode,

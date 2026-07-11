@@ -50,7 +50,7 @@ is caught by the next.
 > - **Layer 1** is `personas/dotty_voice.md` (loaded by the `dotty-pi` agent).
 > - **Layer 2** is the `prompt:` block in `.config.yaml` injected by xiaozhi-server.
 > - **Layer 3** is the per-turn **sandwich suffix** — `build_turn_suffix(kid_mode)` from `custom-providers/textUtils.py`, applied by `custom-providers/pi_voice/pi_voice.py` (`_wrap_with_sandwich`). This **ships on the live path** and includes the kid-mode topic constraints (rules below) when kid-mode is on.
-> - **Not present:** the post-generation **blocked-words content filter** (`content_filter()` / `_BLOCKED_WORDS_RE`) and the emoji-prefix fallback (`_ensure_emoji_prefix()`) existed only in the retired ZeroClaw bridge and exist in **no live code** today. So: the sandwich ships on the live path; the post-generation blocked-words content filter is absent (see [Known Gaps](#voice-red-team-pass) / #22).
+> - **Output backstop:** `filter_tts_stream()` in `custom-providers/textUtils.py` buffers the complete Kid Mode reply, checks the shared blocked-words tiers, and replaces a matching turn before TTS. Both `PiVoiceLLM` and `OpenAICompat` use it. This is a thin, bypassable word-level backstop, not a content-safety guarantee; live red-team verification remains tracked in #157.
 >
 > The `Tier1Slim` provider was removed entirely and is no longer a live or rollback option.
 
@@ -101,16 +101,15 @@ can be diluted by long conversations. The suffix is re-injected on every
 single turn, and its position at the end of the context window gives it
 disproportionate influence on the model's output.
 
-### No post-generation programmatic enforcement
+### Post-generation blocked-words backstop
 
-The retired ZeroClaw bridge had two programmatic post-LLM steps — an emoji
-fallback (`_ensure_emoji_prefix`) and a blocked-words content filter
-(`content_filter` / `_BLOCKED_WORDS_RE`). **Neither exists in any live code
-today.** The emoji prefix now relies entirely on the prompt layers (persona +
-`.config.yaml` `prompt:` + the suffix's rule 2). The blocked-words content
-filter has no live replacement — this is the open gap tracked as #22 (see
-[Known Gaps](#voice-red-team-pass)). The sandwich ships on the live path; the
-post-generation blocked-words content filter is absent.
+In Kid Mode, both live LLM providers pass their TTS-bound response through
+the shared `filter_tts_stream()` core. It consumes the complete response,
+checks three regex tiers, and replaces a matching turn with a cheerful
+redirect before any of it is spoken. Full-turn buffering also lets PiVoiceLLM
+drain its RPC stream through `agent_end`. The regex is intentionally described
+as a backstop: clean paraphrases, confusables, and concepts outside the small
+word list can bypass it. Prompt steering remains the primary defence.
 
 ---
 
@@ -295,7 +294,7 @@ suffix. There is no live bridge involvement.
 | dotty-pi-unavailable canned reply | `custom-providers/pi_voice/pi_voice.py` | `(brain offline — try again in a moment)` |
 | xiaozhi system prompt | `data/.config.yaml` | Top-level `prompt:` block |
 | Agent persona prompt | `personas/dotty_voice.md` | loaded by the `dotty-pi` agent |
-| Blocked-words content filter | — | **Absent.** Was `content_filter()` / `_BLOCKED_WORDS_RE` in the retired ZeroClaw bridge; no live replacement (gap #22, decision C). |
+| Blocked-words content filter | `custom-providers/textUtils.py` | `content_filter_match()`, `filter_tts_stream()`; shared by both live LLM providers and enabled only in Kid Mode. |
 | Emoji-prefix fallback | — | **Absent.** Was `_ensure_emoji_prefix()` in the retired ZeroClaw bridge; prompt layers are now load-bearing. |
 
 ---
@@ -315,21 +314,16 @@ before firing.
 
 ### Voice Red-Team Pass
 
-The adversarial testing so far (8/8 prompts passed) was done against the
-retired ZeroClaw bridge via direct HTTP, not through the live `PiVoiceLLM`
-voice pipeline. Two things remain open: (1) the post-generation blocked-words
-content filter that existed only in that retired bridge has **no live
-replacement** — the sandwich ships on the live path, but the content filter
-is absent; (2) jailbreak attempts via voice (which go through ASR first and
-may be transcribed differently) have not been systematically re-tested on the
-live path.
+The blocked-words backstop is implemented and deployed, but on-device
+red-team acceptance remains open in #157. The bench pass must bait every
+tier, confirm clean replies are unaffected, verify Kid Mode-off bypass, and
+exercise jailbreak attempts through ASR rather than direct HTTP.
 
 ### Severity Tiers
 
-All blocked topics currently get the same treatment (cheerful redirect).
-There is no distinction between severity levels, and no logging or alerting
-when a block triggers. The planned design has three tiers:
-refuse+redirect, refuse+log, and refuse+alert.
+All blocked topics get the same cheerful spoken redirect. Internally the
+matcher distinguishes `redirect`, `log`, and `alert` tiers for local provider
+logging; bridge-side ingress also records metrics and the safety ring.
 
 ### Per-Channel Model Override
 
@@ -375,8 +369,6 @@ adjusting downward would further simplify language.
 - **Suffix position is deliberate.** Placing the hard constraints at the end
   of the prompt exploits the recency bias in transformer attention. This is
   the strongest prompt-engineering position available.
-- **Honest about limitations.** Prompt-level enforcement is not a guarantee.
-  LLMs can leak. On the live `PiVoiceLLM` path enforcement is **prompt-only** —
-  the compiled-regex blocked-words content filter that once backstopped the
-  prompt (in the retired ZeroClaw bridge) has no live replacement. Closing
-  that gap is tracked as #22.
+- **Honest about limitations.** Prompt steering and the word-level output
+  backstop are not guarantees. Clean paraphrases and unlisted concepts can
+  still pass, so Kid Mode is not a substitute for supervision.
