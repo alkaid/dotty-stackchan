@@ -25,7 +25,7 @@ selected_module:
 LLM:
   PiVoiceLLM:
     type: pi_voice
-    container_name: dotty-pi
+    url: http://dotty-pi:8091
     # Optional — flags appended after the default ones in PiClient.
     extra_pi_flags: ""
 ```
@@ -36,7 +36,7 @@ from __future__ import annotations
 import os
 from typing import Iterator
 
-from .pi_client import PiClient, PiClientError, make_default_pi_client
+from .pi_client import PiClient, PiClientError, PiHttpClient
 
 
 try:
@@ -54,8 +54,8 @@ except ImportError:  # pragma: no cover — only on dev workstation
 
 
 # textUtils.build_turn_suffix is the source of truth — pi_voice and
-# openai_compat import from it via the xiaozhi-container
-# bind mount at `core.utils.textUtils`. On the dev workstation the file
+# openai_compat import from it via the xiaozhi image copy at
+# `core.utils.textUtils`. On the dev workstation the file
 # lives at `custom-providers/textUtils.py` (the dash in the dir name
 # makes it unimportable as a package), so we fall back to loading it
 # by absolute path. Both code paths end up with the same module.
@@ -100,17 +100,17 @@ def _wrap_with_sandwich(user_text: str, kid_mode: bool) -> str:
     textUtils.build_turn_suffix contract — emoji-prefix
     rule, English-only, length caps, kid-mode topic filtering. Without
     this Dotty drifts into Chinese, multi-paragraph replies, and (in
-    kid_mode) unsafe topics, since qwen3.5:4b's base behaviour doesn't
-    encode any of those constraints."""
+    kid_mode) unsafe topics, since the base voice model doesn't encode
+    those constraints."""
     return user_text + build_turn_suffix(kid_mode)
 
 
 class LLMProvider(LLMProviderBase):
     """xiaozhi-server LLM provider backed by the dotty-pi container."""
 
-    def __init__(self, config: dict, *, client: PiClient | None = None):
-        self._container = config.get("container_name") or os.environ.get(
-            "DOTTY_PI_CONTAINER", "dotty-pi",
+    def __init__(self, config: dict, *, client: PiClient | PiHttpClient | None = None):
+        self._url = config.get("url") or os.environ.get(
+            "DOTTY_PI_URL", "http://dotty-pi:8091",
         )
         # KID_MODE is a process-start snapshot. Toggling kid_mode requires
         # a container restart, which already happens via the bridge's
@@ -118,9 +118,11 @@ class LLMProvider(LLMProviderBase):
         self._kid_mode = _read_kid_mode()
         # `client` is injected by tests; production passes None to get
         # the env-configured default.
-        self._client: PiClient = client if client is not None else make_default_pi_client()
+        self._client: PiClient | PiHttpClient = (
+            client if client is not None else PiHttpClient(self._url)
+        )
         self._first_turn = True
-        msg = f"PiVoiceLLM ready (container={self._container} kid_mode={self._kid_mode})"
+        msg = f"PiVoiceLLM ready (url={self._url} kid_mode={self._kid_mode})"
         try:
             logger.bind(tag=TAG).info(msg)  # type: ignore[attr-defined]
         except AttributeError:

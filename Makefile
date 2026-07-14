@@ -26,7 +26,7 @@ RESET  := \033[0m
 DL_FILE = dl_file() { if curl -fL --retry 3 --retry-delay 1 --progress-bar -o "$$2" "$$1"; then _sz=$$(wc -c < "$$2" 2>/dev/null || echo 0); if [ "$$_sz" -lt 100 ]; then echo -e "  $(RED)$$2: only $$_sz bytes — treating as a failed download$(RESET)"; rm -f "$$2"; return 1; fi; else echo -e "  $(RED)Failed to download $$1$(RESET)"; rm -f "$$2"; return 1; fi; }
 
 # ── Targets ──────────────────────────────────────────────────────────
-.PHONY: help setup fetch-models doctor audit up down logs status voice-list voice-install sbom verify-firmware test lint check _preflight-compose _preflight-rendered
+.PHONY: help setup fetch-models doctor up down logs status voice-list voice-install sbom verify-firmware test test-node lint check _preflight-compose _preflight-rendered
 
 # ─────────────────────────────────────────────────────────────────────
 # _preflight-compose — fail fast if Docker Compose v2 plugin is missing
@@ -40,10 +40,10 @@ DL_FILE = dl_file() { if curl -fL --retry 3 --retry-delay 1 --progress-bar -o "$
 # install guidance instead.
 # ─────────────────────────────────────────────────────────────────────
 _preflight-rendered:
-	@if [ ! -f docker-compose.yml ] || [ ! -f data/.config.yaml ]; then \
+	@if [ ! -f data/.config.yaml ]; then \
 	  echo ""; \
-	  echo -e "$(RED)Error: docker-compose.yml and/or data/.config.yaml not found.$(RESET)"; \
-	  echo "These are rendered from *.template by 'make setup'."; \
+	  echo -e "$(RED)Error: data/.config.yaml not found.$(RESET)"; \
+	  echo "Run 'make setup' to render the xiaozhi config."; \
 	  echo "Run:  make setup"; \
 	  echo ""; \
 	  exit 1; \
@@ -76,151 +76,264 @@ help: ## Show this help
 	@echo ""
 
 # ─────────────────────────────────────────────────────────────────────
-# Dev-loop targets — same commands CI runs, single source of truth.
+# Dev-loop targets — same test split and coverage gate as CI.
 # Assumes a venv with `pytest pytest-cov ruff` available on PATH. If
 # you use a project venv, run e.g.  `source .venv/bin/activate && make check`.
 # ─────────────────────────────────────────────────────────────────────
 test: ## Run Python unit tests with coverage gate
 	pytest tests/ custom-providers/pi_voice/tests/ \
-		--cov --cov-report=term --cov-fail-under=56
+		--cov --cov-report=
+	pytest dotty-behaviour/tests/ \
+		--cov --cov-append --cov-report=term --cov-fail-under=56
+
+test-node: ## Run dotty-pi extension and RPC tests
+	cd dotty-pi-ext && npm test
+	node --test dotty-pi/tests/*.test.mjs
 
 lint: ## Run ruff lint over the repo
 	ruff check .
 
-check: lint test ## Run lint + tests (the CI gate)
+check: lint test test-node ## Run lint + Python/Node tests
 
 # ─────────────────────────────────────────────────────────────────────
-# setup — interactive first-run wizard
+# setup — validate .env, render config, fetch models, start compose
 #
-# Idempotent: reads previous answers from .wizard.env when present,
-# offers them as defaults, and re-renders all live config files from
-# the *.template sources. Re-running setup never modifies tracked files
-# (the templates are tracked; rendered copies are in .gitignore).
-#
-# Also detects whether the NVIDIA Docker runtime is available and
-# branches the rendered config — falls back to FunASR (CPU) + drops the
-# `runtime: nvidia` block when CUDA isn't on the host.
+# Idempotent: validates .env, resolves ASR acceleration, renders
+# data/.config.yaml, fetches local models, and starts compose.yml.
 # ─────────────────────────────────────────────────────────────────────
-WIZARD_ENV := .wizard.env
-
-setup: _preflight-compose ## Interactive first-run wizard (re-runnable; remembers previous answers)
+setup: _preflight-compose ## Validate .env, render config, fetch models, build and start containers
 	@echo ""
-	@echo -e "$(BOLD)Dotty setup wizard$(RESET)"
-	@echo "Renders config files from *.template sources. Re-runnable;"
-	@echo "previous answers are loaded from $(WIZARD_ENV) and shown as defaults."
+	@echo -e "$(BOLD)Dotty setup$(RESET)"
+	@echo "Validates .env, resolves ASR settings, renders config, and starts compose.yml."
 	@echo ""
-	@# Source previous answers if present so we can offer them as defaults.
-	@# Values are written via `printf '%q'` below so sourcing is safe even
-	@# for inputs with spaces or shell metacharacters.
 	@set -e; \
-	 if [ -f $(WIZARD_ENV) ]; then \
-	   echo -e "$(GREEN)Found $(WIZARD_ENV) — previous answers loaded as defaults.$(RESET)"; \
-	   set -a; . ./$(WIZARD_ENV); set +a; \
+	 if [ ! -f .env ]; then \
+	   echo -e "$(RED)Error: .env not found.$(RESET)"; \
+	   echo "Create it from the example and fill the required values first:"; \
+	   echo "  cp .env.example .env"; \
+	   echo "  $$EDITOR .env"; \
 	   echo ""; \
+	   exit 1; \
 	 fi; \
-	 prompt() { \
-	   local var="$$1" label="$$2" example="$$3" cur="$$4" ans hint; \
-	   hint="$$label"; \
-	   if [ -n "$$cur" ]; then hint="$$hint [$$cur]"; \
-	   elif [ -n "$$example" ]; then hint="$$hint (e.g. $$example)"; fi; \
-	   read -rp "$$hint: " ans; \
-	   if [ -z "$$ans" ]; then ans="$$cur"; fi; \
-	   printf -v "$$var" '%s' "$$ans"; \
+	 env_value() { \
+	   awk -v key="$$1" 'BEGIN { FS = "=" } $$1 == key { sub(/^[^=]*=/, ""); value = $$0 } END { print value }' .env | \
+	     sed -e 's/\r$$//' -e 's/^\"//' -e 's/\"$$//' -e "s/^'//" -e "s/'$$//"; \
 	 }; \
-	 prompt XIAOZHI_HOST    "XIAOZHI_HOST     (LAN IP of Docker host)" "192.168.1.10"  "$$XIAOZHI_HOST"; \
-	 prompt ROBOT_NAME      "ROBOT_NAME       (what the robot calls itself)" "Dotty"   "$${ROBOT_NAME:-Dotty}"; \
-	 prompt YOUR_NAME       "YOUR_NAME        (your name / org)" "Brett"               "$$YOUR_NAME"; \
-	 prompt TZ_VALUE        "TZ_VALUE         (IANA timezone)" "Australia/Brisbane"    "$$TZ_VALUE"; \
-	 echo ""; \
-	 if [ -z "$$XIAOZHI_HOST" ] || \
-	    [ -z "$$ROBOT_NAME" ] || [ -z "$$YOUR_NAME" ] || [ -z "$$TZ_VALUE" ]; then \
-	   echo -e "$(RED)Error: all fields are required.$(RESET)"; exit 1; \
+	 set_env_value() { \
+	   local name="$$1" value="$$2"; \
+	   if grep -q "^$${name}=" .env; then \
+	     sed -i "s|^$${name}=.*|$${name}=$${value}|" .env; \
+	   else \
+	     printf '%s=%s\n' "$$name" "$$value" >> .env; \
+	   fi; \
+	 }; \
+	 is_placeholder() { \
+	   case "$$2" in \
+	     *PLACEHOLDER*|CHANGE_ME|CHANGE_ME_*|changeme|TODO|todo|sk-...) return 0 ;; \
+	   esac; \
+	   return 1; \
+	 }; \
+	 missing=""; invalid=""; \
+	 require() { \
+	   local name="$$1" val; \
+	   val="$$(env_value "$$name")"; \
+	   if [ -z "$$val" ]; then missing="$$missing $$name"; \
+	   elif is_placeholder "$$name" "$$val"; then invalid="$$invalid $$name"; fi; \
+	 }; \
+	 require_port() { \
+	   local name="$$1" val; \
+	   val="$$(env_value "$$name")"; \
+	   if [ -z "$$val" ]; then missing="$$missing $$name"; \
+	   elif ! [[ "$$val" =~ ^[0-9]+$$ ]] || [ "$$val" -lt 1 ] || [ "$$val" -gt 65535 ]; then invalid="$$invalid $$name"; fi; \
+	 }; \
+	 optional_port() { \
+	   local name="$$1" val; \
+	   val="$$(env_value "$$name")"; \
+	   if [ -n "$$val" ] && { ! [[ "$$val" =~ ^[0-9]+$$ ]] || [ "$$val" -lt 1 ] || [ "$$val" -gt 65535 ]; }; then \
+	     invalid="$$invalid $$name"; \
+	   fi; \
+	 }; \
+	 trim_base_url() { \
+	   local value="$$1"; \
+	   while [ "$${value%/}" != "$$value" ]; do value="$${value%/}"; done; \
+	   printf '%s' "$$value"; \
+	 }; \
+	 for name in \
+	   TZ DOTTY_ADMIN_TOKEN \
+	   DOTTY_PI_BASE_URL DOTTY_PI_API_KEY \
+	   DOTTY_PI_PROVIDER DOTTY_PI_MODEL \
+	   VOICE_THINKER_MODEL; do \
+	   require "$$name"; \
+	 done; \
+	 for name in XIAOZHI_WS_PORT XIAOZHI_HTTP_PORT; do \
+	   require_port "$$name"; \
+	 done; \
+	 for name in DOTTY_BEHAVIOUR_PORT DOTTY_BRIDGE_PORT; do optional_port "$$name"; done; \
+	 XIAOZHI_WS_PORT="$$(env_value XIAOZHI_WS_PORT)"; \
+	 XIAOZHI_HTTP_PORT="$$(env_value XIAOZHI_HTTP_PORT)"; \
+	 XIAOZHI_PUBLIC_WS_BASE_URL="$$(env_value XIAOZHI_PUBLIC_WS_BASE_URL)"; \
+	 XIAOZHI_PUBLIC_OTA_BASE_URL="$$(env_value XIAOZHI_PUBLIC_OTA_BASE_URL)"; \
+	 if [ -z "$$XIAOZHI_PUBLIC_WS_BASE_URL" ]; then missing="$$missing XIAOZHI_PUBLIC_WS_BASE_URL"; \
+	 elif is_placeholder XIAOZHI_PUBLIC_WS_BASE_URL "$$XIAOZHI_PUBLIC_WS_BASE_URL"; then invalid="$$invalid XIAOZHI_PUBLIC_WS_BASE_URL"; \
+	 else XIAOZHI_PUBLIC_WS_BASE_URL="$$(trim_base_url "$$XIAOZHI_PUBLIC_WS_BASE_URL")"; fi; \
+	 if [ -z "$$XIAOZHI_PUBLIC_OTA_BASE_URL" ]; then missing="$$missing XIAOZHI_PUBLIC_OTA_BASE_URL"; \
+	 elif is_placeholder XIAOZHI_PUBLIC_OTA_BASE_URL "$$XIAOZHI_PUBLIC_OTA_BASE_URL"; then invalid="$$invalid XIAOZHI_PUBLIC_OTA_BASE_URL"; \
+	 else XIAOZHI_PUBLIC_OTA_BASE_URL="$$(trim_base_url "$$XIAOZHI_PUBLIC_OTA_BASE_URL")"; fi; \
+	 if [ -n "$$XIAOZHI_PUBLIC_WS_BASE_URL" ] && \
+	    ! [[ "$$XIAOZHI_PUBLIC_WS_BASE_URL" =~ ^wss?://[^/?#[:space:]]+$$ ]]; then \
+	   invalid="$$invalid XIAOZHI_PUBLIC_WS_BASE_URL"; \
 	 fi; \
+	 if [ -n "$$XIAOZHI_PUBLIC_OTA_BASE_URL" ] && \
+	    ! [[ "$$XIAOZHI_PUBLIC_OTA_BASE_URL" =~ ^https?://[^/?#[:space:]]+$$ ]]; then \
+	   invalid="$$invalid XIAOZHI_PUBLIC_OTA_BASE_URL"; \
+	 fi; \
+	 ADMIN_TOKEN="$$(env_value DOTTY_ADMIN_TOKEN)"; \
+	 if [ "$${#ADMIN_TOKEN}" -lt 32 ]; then invalid="$$invalid DOTTY_ADMIN_TOKEN"; fi; \
+	 case "$$(env_value DOTTY_PI_BASE_URL)" in http://*|https://*) ;; *) invalid="$$invalid DOTTY_PI_BASE_URL" ;; esac; \
+	 if [ -n "$$missing" ] || [ -n "$$invalid" ]; then \
+	   echo -e "$(RED)Error: .env is incomplete.$(RESET)"; \
+	   if [ -n "$$missing" ]; then echo "Missing required keys:$$missing"; fi; \
+	   if [ -n "$$invalid" ]; then echo "Unset placeholder or invalid values:$$invalid"; fi; \
+	   echo ""; \
+	   echo "Edit .env, then run 'make setup' again."; \
+	   echo ""; \
+	   exit 1; \
+	 fi; \
+	 TZ_VALUE="$$(env_value TZ)"; \
+	 ROBOT_NAME="$$(env_value ROBOT_NAME)"; [ -n "$$ROBOT_NAME" ] || ROBOT_NAME=Dotty; \
+	 YOUR_NAME="$$(env_value YOUR_NAME)"; [ -n "$$YOUR_NAME" ] || YOUR_NAME=household; \
 	 echo -e "$(BOLD)Detecting NVIDIA Docker runtime...$(RESET)"; \
 	 if docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -qi '"nvidia"'; then \
 	   HAS_CUDA=1; \
-	   echo -e "  $(GREEN)Found — using WhisperLocal on GPU (float16).$(RESET)"; \
+	   echo -e "  $(GREEN)Found NVIDIA runtime.$(RESET)"; \
 	 else \
 	   HAS_CUDA=0; \
-	   echo -e "  $(YELLOW)Not found — using FunASR on CPU instead.$(RESET)"; \
-	   echo "  (Install nvidia-container-toolkit and re-run setup to enable GPU ASR.)"; \
+	   echo -e "  $(YELLOW)NVIDIA runtime not found.$(RESET)"; \
 	 fi; \
-	 echo ""; \
-	 echo -e "$(BOLD)Saving answers to $(WIZARD_ENV)...$(RESET)"; \
-	 { \
-	   echo "# Generated by 'make setup' — defaults for the next run."; \
-	   echo "# Values shell-quoted so sourcing tolerates spaces and metacharacters."; \
-	   printf 'XIAOZHI_HOST=%q\n'     "$$XIAOZHI_HOST"; \
-	   printf 'ROBOT_NAME=%q\n'       "$$ROBOT_NAME"; \
-	   printf 'YOUR_NAME=%q\n'        "$$YOUR_NAME"; \
-	   printf 'TZ_VALUE=%q\n'         "$$TZ_VALUE"; \
-	   printf 'HAS_CUDA=%q\n'         "$$HAS_CUDA"; \
-	 } > $(WIZARD_ENV); \
-	 echo "  $(WIZARD_ENV) — done"; \
-	 echo ""; \
-	 echo -e "$(BOLD)Ensuring .env + admin-API token...$(RESET)"; \
-	 if [ ! -f .env ]; then \
-	   cp .env.example .env; \
-	   echo "  .env created from .env.example"; \
+	 ASR_ACCELERATION="$$(env_value ASR_ACCELERATION)"; \
+	 if [ -z "$$ASR_ACCELERATION" ]; then \
+	   if [ -n "$$(env_value ASR_MODULE)$$(env_value ASR_DEVICE)$$(env_value ASR_COMPUTE_TYPE)$$(env_value XIAOZHI_CONTAINER_RUNTIME)$$(env_value NVIDIA_VISIBLE_DEVICES)" ]; then \
+	     ASR_ACCELERATION=manual; \
+	   else \
+	     ASR_ACCELERATION=auto; \
+	   fi; \
 	 fi; \
-	 if grep -q '^DOTTY_ADMIN_TOKEN=' .env; then \
-	   echo -e "  $(GREEN)DOTTY_ADMIN_TOKEN already present in .env — keeping it.$(RESET)"; \
+	 case "$$ASR_ACCELERATION" in \
+	   auto) \
+	     if [ "$$HAS_CUDA" = "1" ]; then RESOLVED_ACCELERATION=cuda; else RESOLVED_ACCELERATION=cpu; fi ;; \
+	   cpu) RESOLVED_ACCELERATION=cpu ;; \
+	   cuda) \
+	     if [ "$$HAS_CUDA" != "1" ]; then \
+	       echo -e "$(RED)Error: ASR_ACCELERATION=cuda requires the NVIDIA Docker runtime.$(RESET)"; exit 1; \
+	     fi; \
+	     RESOLVED_ACCELERATION=cuda ;; \
+	   manual) RESOLVED_ACCELERATION=manual ;; \
+	   *) \
+	     echo -e "$(RED)Error: ASR_ACCELERATION must be auto, cpu, cuda, or manual.$(RESET)"; exit 1 ;; \
+	 esac; \
+	 if [ "$$RESOLVED_ACCELERATION" = "cuda" ]; then \
+	   ASR_MODULE=WhisperLocal; ASR_DEVICE=cuda; ASR_COMPUTE_TYPE=float16; \
+	   CONTAINER_RUNTIME=nvidia; NVIDIA_VISIBLE_DEVICES_VALUE=all; \
+	 elif [ "$$RESOLVED_ACCELERATION" = "cpu" ]; then \
+	   ASR_MODULE=FunASR; ASR_DEVICE=cpu; ASR_COMPUTE_TYPE=int8; \
+	   CONTAINER_RUNTIME=runc; NVIDIA_VISIBLE_DEVICES_VALUE=void; \
 	 else \
-	   ADMIN_TOKEN=$$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'); \
-	   printf '\nDOTTY_ADMIN_TOKEN=%s\n' "$$ADMIN_TOKEN" >> .env; \
-	   echo "  generated DOTTY_ADMIN_TOKEN → .env (authenticates /xiaozhi/admin/*)"; \
-	   echo -e "  $(YELLOW)NOTE:$(RESET) set the SAME value in the bridge / dotty-behaviour /"; \
-	   echo "        dotty-pi deploy-dir .env files, or their admin calls will 401."; \
-	   echo "        See .env.example ('Admin API auth') for details."; \
+	   ASR_MODULE="$$(env_value ASR_MODULE)"; [ -n "$$ASR_MODULE" ] || ASR_MODULE=FunASR; \
+	   ASR_DEVICE="$$(env_value ASR_DEVICE)"; [ -n "$$ASR_DEVICE" ] || ASR_DEVICE=cpu; \
+	   ASR_COMPUTE_TYPE="$$(env_value ASR_COMPUTE_TYPE)"; [ -n "$$ASR_COMPUTE_TYPE" ] || ASR_COMPUTE_TYPE=int8; \
+	   CONTAINER_RUNTIME="$$(env_value XIAOZHI_CONTAINER_RUNTIME)"; [ -n "$$CONTAINER_RUNTIME" ] || CONTAINER_RUNTIME=runc; \
+	   NVIDIA_VISIBLE_DEVICES_VALUE="$$(env_value NVIDIA_VISIBLE_DEVICES)"; \
+	   [ -n "$$NVIDIA_VISIBLE_DEVICES_VALUE" ] || NVIDIA_VISIBLE_DEVICES_VALUE=void; \
 	 fi; \
+	 case "$$CONTAINER_RUNTIME" in runc|nvidia) ;; *) \
+	   echo -e "$(RED)Error: XIAOZHI_CONTAINER_RUNTIME must be runc or nvidia.$(RESET)"; exit 1 ;; \
+	 esac; \
+	 NEED_CUDA=0; \
+	 if [ "$$ASR_DEVICE" = "cuda" ]; then NEED_CUDA=1; fi; \
+	 if [ "$$NEED_CUDA" = "1" ] && [ "$$CONTAINER_RUNTIME" != "nvidia" ]; then \
+	   echo -e "$(RED)Error: CUDA ASR requires XIAOZHI_CONTAINER_RUNTIME=nvidia.$(RESET)"; \
+	   exit 1; \
+	 fi; \
+	 if [ "$$CONTAINER_RUNTIME" = "nvidia" ] && [ "$$HAS_CUDA" != "1" ]; then \
+	   echo -e "$(RED)Error: Docker does not provide the NVIDIA runtime.$(RESET)"; exit 1; \
+	 fi; \
+	 set_env_value ASR_ACCELERATION "$$ASR_ACCELERATION"; \
+	 if [ "$$ASR_ACCELERATION" != "manual" ]; then \
+	   set_env_value ASR_MODULE "$$ASR_MODULE"; \
+	   set_env_value ASR_DEVICE "$$ASR_DEVICE"; \
+	   set_env_value ASR_COMPUTE_TYPE "$$ASR_COMPUTE_TYPE"; \
+	   set_env_value XIAOZHI_CONTAINER_RUNTIME "$$CONTAINER_RUNTIME"; \
+	   set_env_value NVIDIA_VISIBLE_DEVICES "$$NVIDIA_VISIBLE_DEVICES_VALUE"; \
+	   echo "  resolved ASR settings written to .env"; \
+	 fi; \
+	 echo -e "$(GREEN).env validation passed.$(RESET)"; \
+	 echo -e "$(BOLD)Using ASR: $$ASR_MODULE / $$ASR_DEVICE / $$ASR_COMPUTE_TYPE; runtime=$$CONTAINER_RUNTIME (mode=$$ASR_ACCELERATION).$(RESET)"; \
 	 echo ""; \
-	 echo -e "$(BOLD)Rendering templates...$(RESET)"; \
-	 mkdir -p data; \
-	 if [ "$$HAS_CUDA" = "1" ]; then \
-	   ASR_MODULE=WhisperLocal; ASR_DEVICE=cuda;  ASR_COMPUTE_TYPE=float16; \
-	 else \
-	   ASR_MODULE=FunASR;       ASR_DEVICE=cpu;   ASR_COMPUTE_TYPE=int8; \
-	 fi; \
+	 echo -e "$(BOLD)Rendering xiaozhi config...$(RESET)"; \
+	 mkdir -p data/bin tmp; \
 	 sed_escape() { printf '%s' "$$1" | sed -e 's/[\\&|]/\\&/g'; }; \
-	 e_XIAOZHI_HOST=$$(sed_escape   "$$XIAOZHI_HOST"); \
+	 e_XIAOZHI_PUBLIC_WS_BASE_URL=$$(sed_escape "$$XIAOZHI_PUBLIC_WS_BASE_URL"); \
+	 e_XIAOZHI_PUBLIC_OTA_BASE_URL=$$(sed_escape "$$XIAOZHI_PUBLIC_OTA_BASE_URL"); \
 	 e_ROBOT_NAME=$$(sed_escape     "$$ROBOT_NAME"); \
 	 e_YOUR_NAME=$$(sed_escape      "$$YOUR_NAME"); \
 	 e_TZ_VALUE=$$(sed_escape       "$$TZ_VALUE"); \
-	 render() { \
-	   local src="$$1" dst="$$2"; \
+	 render_xiaozhi_config() { \
 	   sed \
-	     -e "s|<XIAOZHI_HOST>|$$e_XIAOZHI_HOST|g" \
-	     -e "s|<ROBOT_NAME>|$$e_ROBOT_NAME|g" \
-	     -e "s|You are Dotty,|You are $$e_ROBOT_NAME,|g" \
-	     -e "s|<YOUR_NAME>|$$e_YOUR_NAME|g" \
-	     -e "s|<TZ_VALUE>|$$e_TZ_VALUE|g" \
-	     -e "s|<ASR_MODULE>|$$ASR_MODULE|g" \
-	     -e "s|<ASR_DEVICE>|$$ASR_DEVICE|g" \
-	     -e "s|<ASR_COMPUTE_TYPE>|$$ASR_COMPUTE_TYPE|g" \
-	     "$$src" > "$$dst.tmp"; \
-	   if [ "$$HAS_CUDA" != "1" ]; then \
-	     sed -i \
-	       -e '/# --- BEGIN CUDA BLOCK/,/# --- END CUDA BLOCK ---/d' \
-	       -e '/# --- BEGIN CUDA ENV/,/# --- END CUDA ENV ---/d' \
-	       "$$dst.tmp"; \
-	   fi; \
-	   mv "$$dst.tmp" "$$dst"; \
-	   echo "  $$src → $$dst"; \
+	       -e "s|<XIAOZHI_PUBLIC_WS_BASE_URL>|$$e_XIAOZHI_PUBLIC_WS_BASE_URL|g" \
+	       -e "s|<XIAOZHI_PUBLIC_OTA_BASE_URL>|$$e_XIAOZHI_PUBLIC_OTA_BASE_URL|g" \
+	       -e "s|<ROBOT_NAME>|$$e_ROBOT_NAME|g" \
+	       -e "s|You are Dotty,|You are $$e_ROBOT_NAME,|g" \
+	       -e "s|<YOUR_NAME>|$$e_YOUR_NAME|g" \
+	       -e "s|<TZ_VALUE>|$$e_TZ_VALUE|g" \
+	       -e "s|<ASR_MODULE>|$$ASR_MODULE|g" \
+	       -e "s|<ASR_DEVICE>|$$ASR_DEVICE|g" \
+	       -e "s|<ASR_COMPUTE_TYPE>|$$ASR_COMPUTE_TYPE|g" \
+	       .config.yaml.template > data/.config.yaml.tmp; \
+	   mv data/.config.yaml.tmp data/.config.yaml; \
 	 }; \
-	 render .config.yaml.template            data/.config.yaml; \
-	 render docker-compose.yml.template      docker-compose.yml; \
+	 render_xiaozhi_config; \
+	 echo "  .config.yaml.template → data/.config.yaml"; \
+	 docker compose config --quiet; \
 	 echo ""; \
-	 $(MAKE) fetch-models; \
+	 make --no-print-directory fetch-models; \
+	 echo ""; \
+	 BRIDGE_VERSION_VALUE="$${BRIDGE_VERSION:-$$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"; \
+	 echo -e "$(BOLD)Building container images...$(RESET)"; \
+	 BRIDGE_VERSION="$$BRIDGE_VERSION_VALUE" docker compose build; \
+	 if [ "$$NEED_CUDA" = "1" ]; then \
+	   echo ""; \
+	   echo -e "$(BOLD)Validating xiaozhi CUDA passthrough...$(RESET)"; \
+	   if docker compose run --rm --no-deps --entrypoint python \
+	       -e DOTTY_CUDA_COMPUTE_TYPE="$$ASR_COMPUTE_TYPE" xiaozhi-esp32-server \
+	       -c 'import os, ctranslate2; required = os.environ["DOTTY_CUDA_COMPUTE_TYPE"]; count = ctranslate2.get_cuda_device_count(); types = ctranslate2.get_supported_compute_types("cuda", 0) if count else set(); print(f"CUDA devices={count}, compute_types={sorted(types)}, required={required}"); raise SystemExit(0 if count > 0 and required in types else 1)'; then \
+	     echo -e "  $(GREEN)CUDA passthrough and $$ASR_COMPUTE_TYPE support verified.$(RESET)"; \
+	   elif [ "$$ASR_ACCELERATION" = "auto" ]; then \
+	     echo -e "  $(YELLOW)CUDA probe failed; falling back to FunASR on CPU.$(RESET)"; \
+	     ASR_MODULE=FunASR; ASR_DEVICE=cpu; ASR_COMPUTE_TYPE=int8; \
+	     CONTAINER_RUNTIME=runc; NVIDIA_VISIBLE_DEVICES_VALUE=void; NEED_CUDA=0; \
+	     set_env_value ASR_MODULE "$$ASR_MODULE"; \
+	     set_env_value ASR_DEVICE "$$ASR_DEVICE"; \
+	     set_env_value ASR_COMPUTE_TYPE "$$ASR_COMPUTE_TYPE"; \
+	     set_env_value XIAOZHI_CONTAINER_RUNTIME "$$CONTAINER_RUNTIME"; \
+	     set_env_value NVIDIA_VISIBLE_DEVICES "$$NVIDIA_VISIBLE_DEVICES_VALUE"; \
+	     render_xiaozhi_config; \
+	     docker compose config --quiet; \
+	   else \
+	     echo -e "$(RED)Error: xiaozhi cannot access CUDA with $$ASR_COMPUTE_TYPE through Compose.$(RESET)"; \
+	     echo "Check the NVIDIA driver and Container Toolkit, or set ASR_ACCELERATION=cpu."; \
+	     exit 1; \
+	   fi; \
+	 fi; \
 	 echo ""; \
 	 echo -e "$(BOLD)Starting containers...$(RESET)"; \
-	 docker compose up -d; \
+	 BRIDGE_VERSION="$$BRIDGE_VERSION_VALUE" docker compose up -d; \
 	 echo ""; \
 	 echo -e "$(GREEN)$(BOLD)Setup complete.$(RESET)"; \
 	 echo ""; \
 	 echo "Next steps:"; \
 	 echo "  1. Flash the StackChan firmware (see SETUP.md or m5stack/StackChan repo)."; \
 	 echo "  2. In the device's Advanced Options, set the OTA URL to:"; \
-	 echo "       http://$$XIAOZHI_HOST:8003/xiaozhi/ota/"; \
+	 echo "       $$XIAOZHI_PUBLIC_OTA_BASE_URL/xiaozhi/ota/"; \
 	 echo "  3. Run 'make doctor' to verify everything is healthy."; \
 	 echo ""
 
@@ -285,138 +398,8 @@ fetch-models: ## Download SenseVoiceSmall + Piper voice models
 sbom: ## Generate Software Bill of Materials (sbom.json)
 	@./scripts/generate-sbom.sh
 
-# ─────────────────────────────────────────────────────────────────────
-# doctor — health checks
-#
-# Looks at data/.config.yaml (the rendered output of `make setup`); falls
-# back to the legacy root .config.yaml for pre-template checkouts.
-# WIZARD_PLACEHOLDERS is the closed set of <TOKEN>s the wizard owns —
-# the template also carries <OPENAI_COMPAT_URL>, etc.
-# in alternate backend blocks; an unsubstituted token in an unselected
-# backend isn't an error.
-# ─────────────────────────────────────────────────────────────────────
-WIZARD_PLACEHOLDERS := <XIAOZHI_HOST>|<ROBOT_NAME>|<YOUR_NAME>|<TZ_VALUE>|<ASR_MODULE>|<ASR_DEVICE>|<ASR_COMPUTE_TYPE>
-
 doctor: ## Run health checks on config, models, and services
-	@echo ""
-	@echo -e "$(BOLD)Running health checks...$(RESET)"
-	@echo ""
-	@PASS=0; FAIL=0; \
-	 check() { \
-	   if eval "$$2" >/dev/null 2>&1; then \
-	     echo -e "  $(GREEN)PASS$(RESET)  $$1"; \
-	     PASS=$$((PASS+1)); \
-	   else \
-	     echo -e "  $(RED)FAIL$(RESET)  $$1"; \
-	     FAIL=$$((FAIL+1)); \
-	   fi; \
-	 }; \
-	 if [ -f data/.config.yaml ]; then CFG=data/.config.yaml; \
-	 elif [ -f .config.yaml ]; then CFG=.config.yaml; \
-	 else CFG=""; fi; \
-	 if [ -n "$$CFG" ]; then \
-	   echo -e "  $(GREEN)PASS$(RESET)  config exists ($$CFG)"; \
-	   PASS=$$((PASS+1)); \
-	 else \
-	   echo -e "  $(RED)FAIL$(RESET)  config exists (run 'make setup')"; \
-	   FAIL=$$((FAIL+1)); \
-	 fi; \
-	 if [ -z "$$CFG" ]; then \
-	   echo -e "  $(YELLOW)SKIP$(RESET)  no config — placeholder check skipped"; \
-	 elif grep -qE '$(WIZARD_PLACEHOLDERS)' "$$CFG" 2>/dev/null; then \
-	   echo -e "  $(RED)FAIL$(RESET)  $$CFG has unsubstituted wizard placeholders"; \
-	   FAIL=$$((FAIL+1)); \
-	 else \
-	   echo -e "  $(GREEN)PASS$(RESET)  $$CFG has no unsubstituted wizard placeholders"; \
-	   PASS=$$((PASS+1)); \
-	 fi; \
-	 check "SenseVoiceSmall model.pt present (>200MB)" "[ $$(wc -c < $(SENSEVOICE_DIR)/model.pt 2>/dev/null || echo 0) -gt 209715200 ]"; \
-	 check "SenseVoiceSmall tokenizer (chn_jpn_yue_eng_ko_spectok.bpe.model) present" "[ -s $(SENSEVOICE_DIR)/chn_jpn_yue_eng_ko_spectok.bpe.model ]"; \
-	 check "models/piper/*.onnx exists" "ls $(PIPER_DIR)/*.onnx >/dev/null 2>&1"; \
-	 check "docker compose config validates" "docker compose config --quiet"; \
-	 XIAOZHI_HOST=$$(grep -oP 'ws://\K[0-9.]+' "$$CFG" 2>/dev/null | head -1); \
-	 if [ -n "$$XIAOZHI_HOST" ]; then \
-	   if curl -sf --max-time 3 "http://$$XIAOZHI_HOST:8003/xiaozhi/ota/" >/dev/null 2>&1; then \
-	     echo -e "  $(GREEN)PASS$(RESET)  OTA endpoint reachable ($$XIAOZHI_HOST:8003)"; \
-	     PASS=$$((PASS+1)); \
-	   else \
-	     echo -e "  $(RED)FAIL$(RESET)  OTA endpoint reachable ($$XIAOZHI_HOST:8003)"; \
-	     FAIL=$$((FAIL+1)); \
-	   fi; \
-	   if curl -sf --max-time 3 "http://$$XIAOZHI_HOST:8081/health" >/dev/null 2>&1; then \
-	     echo -e "  $(GREEN)PASS$(RESET)  Dashboard /health reachable ($$XIAOZHI_HOST:8081)"; \
-	     PASS=$$((PASS+1)); \
-	   else \
-	     echo -e "  $(RED)FAIL$(RESET)  Dashboard /health reachable ($$XIAOZHI_HOST:8081)"; \
-	     FAIL=$$((FAIL+1)); \
-	   fi; \
-	   if curl -sf --max-time 3 "http://$$XIAOZHI_HOST:8090/health" >/dev/null 2>&1; then \
-	     echo -e "  $(GREEN)PASS$(RESET)  dotty-behaviour /health reachable ($$XIAOZHI_HOST:8090)"; \
-	     PASS=$$((PASS+1)); \
-	   else \
-	     echo -e "  $(RED)FAIL$(RESET)  dotty-behaviour /health reachable ($$XIAOZHI_HOST:8090)"; \
-	     FAIL=$$((FAIL+1)); \
-	   fi; \
-	 else \
-	   echo -e "  $(YELLOW)SKIP$(RESET)  OTA / dashboard / dotty-behaviour (could not extract XIAOZHI_HOST from config)"; \
-	 fi; \
-	 echo ""; \
-	 echo -e "$(BOLD)Results: $$PASS passed, $$FAIL failed.$(RESET)"; \
-	 echo ""; \
-	 if [ $$FAIL -gt 0 ]; then exit 1; fi
-
-# ─────────────────────────────────────────────────────────────────────
-# audit — verify "local except LLM" network claim
-# ─────────────────────────────────────────────────────────────────────
-audit: ## Audit outbound network connections (verify local-except-LLM claim)
-	@echo ""
-	@echo -e "$(BOLD)Network audit — verifying 'local except LLM' claim$(RESET)"
-	@echo ""
-	@if [ -f data/.config.yaml ]; then CFG=data/.config.yaml; \
-	 elif [ -f .config.yaml ]; then CFG=.config.yaml; \
-	 else CFG=""; fi; \
-	 XIAOZHI_HOST=$$(grep -oP 'ws://\K[0-9.]+' "$$CFG" 2>/dev/null | head -1); \
-	 PASS=0; FAIL=0; WARN=0; \
-	 echo -e "$(BOLD)Server host (Docker):$(RESET)"; \
-	 if [ -n "$$XIAOZHI_HOST" ]; then \
-	   echo "  Checking outbound connections on $$XIAOZHI_HOST..."; \
-	   CONNS=$$(ssh -o ConnectTimeout=5 root@$$XIAOZHI_HOST \
-	     'ss -tnp | grep -v "127.0.0.1\|::1" | grep "ESTAB"' 2>/dev/null); \
-	   if [ -z "$$CONNS" ]; then \
-	     echo -e "  $(GREEN)PASS$(RESET)  No outbound connections (fully local)"; \
-	     PASS=$$((PASS+1)); \
-	   else \
-	     echo "$$CONNS" | while read line; do echo "  $$line"; done; \
-	     LLM=$$(echo "$$CONNS" | grep -cE "openrouter|cloudflare|anthropic" || true); \
-	     OTHER=$$(echo "$$CONNS" | grep -cvE "openrouter|cloudflare|anthropic|tailscale|100\." || true); \
-	     if [ "$$OTHER" -gt 0 ]; then \
-	       echo -e "  $(RED)FAIL$(RESET)  Unexpected external connections detected"; \
-	       FAIL=$$((FAIL+1)); \
-	     else \
-	       echo -e "  $(GREEN)PASS$(RESET)  Only LLM/Tailscale connections (expected)"; \
-	       PASS=$$((PASS+1)); \
-	     fi; \
-	   fi; \
-	 else \
-	   echo -e "  $(YELLOW)SKIP$(RESET)  Could not extract server IP from config"; \
-	   WARN=$$((WARN+1)); \
-	 fi; \
-	 echo ""; \
-	 echo -e "$(BOLD)Docker container (no external mounts):$(RESET)"; \
-	 MOUNTS=$$(docker compose exec -T xiaozhi-esp32-server mount 2>/dev/null | \
-	   grep -v "overlay\|proc\|sys\|dev\|tmpfs\|cgroup\|mqueue\|shm" || true); \
-	 if [ -z "$$MOUNTS" ]; then \
-	   echo -e "  $(GREEN)PASS$(RESET)  No unexpected filesystem mounts"; \
-	   PASS=$$((PASS+1)); \
-	 else \
-	   echo "$$MOUNTS" | while read line; do echo "  $$line"; done; \
-	   echo -e "  $(YELLOW)WARN$(RESET)  Review mounts above"; \
-	   WARN=$$((WARN+1)); \
-	 fi; \
-	 echo ""; \
-	 echo -e "$(BOLD)Results: $$PASS passed, $$FAIL failed, $$WARN warnings.$(RESET)"; \
-	 echo ""; \
-	 if [ $$FAIL -gt 0 ]; then exit 1; fi
+	python3 scripts/dotty_doctor.py
 
 # ─────────────────────────────────────────────────────────────────────
 # Docker shortcuts
@@ -496,17 +479,4 @@ verify-firmware: ## Build firmware in IDF container and compute SHA256 checksums
 status: _preflight-compose _preflight-rendered ## Show container status + bridge / dotty-behaviour health
 	@docker compose ps
 	@echo ""
-	@if [ -f data/.config.yaml ]; then CFG=data/.config.yaml; \
-	 elif [ -f .config.yaml ]; then CFG=.config.yaml; \
-	 else CFG=""; fi; \
-	 XIAOZHI_HOST=$$(grep -oP 'ws://\K[0-9.]+' "$$CFG" 2>/dev/null | head -1); \
-	 if [ -n "$$XIAOZHI_HOST" ]; then \
-	   echo -n "Dashboard health ($$XIAOZHI_HOST:8081): "; \
-	   curl -sf --max-time 3 "http://$$XIAOZHI_HOST:8081/health" && echo "" || \
-	     echo -e "$(YELLOW)unreachable$(RESET)"; \
-	   echo -n "dotty-behaviour health ($$XIAOZHI_HOST:8090): "; \
-	   curl -sf --max-time 3 "http://$$XIAOZHI_HOST:8090/health" && echo "" || \
-	     echo -e "$(YELLOW)unreachable$(RESET)"; \
-	 else \
-	   echo -e "Service health: $(YELLOW)could not extract XIAOZHI_HOST from config$(RESET)"; \
-	 fi
+	@python3 scripts/dotty_doctor.py

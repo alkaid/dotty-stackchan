@@ -7,7 +7,7 @@ description: OTA handshake between StackChan firmware and xiaozhi-esp32-server �
 
 ## TL;DR
 
-- The StackChan firmware contacts `http://<XIAOZHI_HOST>:8003/xiaozhi/ota/` on every boot.
+- The StackChan firmware contacts `<XIAOZHI_PUBLIC_OTA_BASE_URL>/xiaozhi/ota/` on every boot.
 - The OTA response delivers the **WebSocket URL** the device uses for voice — this is how the device discovers its server.
 - The same endpoint optionally signals a **firmware update** (version + binary URL).
 - The server also sends **server time**, allowing the device to sync its clock without NTP.
@@ -16,12 +16,12 @@ description: OTA handshake between StackChan firmware and xiaozhi-esp32-server �
 ## Endpoint
 
 ```
-POST http://<XIAOZHI_HOST>:8003/xiaozhi/ota/
+POST <XIAOZHI_PUBLIC_OTA_BASE_URL>/xiaozhi/ota/
 ```
 
 The URL is compiled into the firmware via `CONFIG_OTA_URL` in `sdkconfig.defaults`. The device can also override it at runtime through a Wi-Fi settings key (`ota_url`). If neither is set, the firmware falls back to the upstream default (`https://api.tenclass.net/xiaozhi/ota/`).
 
-The port `8003` is set by `server.http_port` in `.config.yaml` and mapped through Docker in `docker-compose.yml`.
+The container always listens on `8003`. `XIAOZHI_HTTP_PORT` controls the Compose host mapping, while `XIAOZHI_PUBLIC_OTA_BASE_URL` may point at that mapping or at an HTTP(S) gateway.
 
 ## What the firmware sends
 
@@ -110,7 +110,7 @@ HTTP 200 with a JSON body. The firmware parses five optional top-level sections:
     "password": "..."
   },
   "websocket": {
-    "url": "ws://<XIAOZHI_HOST>:8000/xiaozhi/v1/",
+    "url": "<XIAOZHI_PUBLIC_WS_BASE_URL>/xiaozhi/v1/",
     "token": "optional-auth-token"
   },
   "server_time": {
@@ -119,7 +119,7 @@ HTTP 200 with a JSON body. The firmware parses five optional top-level sections:
   },
   "firmware": {
     "version": "1.0.0",
-    "url": "http://<XIAOZHI_HOST>:8003/firmware/stackchan.bin",
+    "url": "<XIAOZHI_PUBLIC_OTA_BASE_URL>/xiaozhi/ota/download/stackchan.bin",
     "force": 0
   }
 }
@@ -131,7 +131,7 @@ HTTP 200 with a JSON body. The firmware parses five optional top-level sections:
 
 The device stores the `url` key into NVS settings and uses it to open its voice WebSocket connection. **Without this section, the device has no server to talk to.**
 
-Our `.config.yaml` sets `server.websocket: ws://<XIAOZHI_HOST>:8000/xiaozhi/v1/` and the xiaozhi-server includes this in every OTA response.
+Our rendered `.config.yaml` appends `/xiaozhi/v1/` to `XIAOZHI_PUBLIC_WS_BASE_URL`, and xiaozhi-server includes the result in every OTA response.
 
 #### `server_time`
 
@@ -199,10 +199,10 @@ The firmware retries the OTA check up to 10 times with exponential backoff (star
 
 ```bash
 # Minimal request — just GET the endpoint
-curl -s http://<XIAOZHI_HOST>:8003/xiaozhi/ota/
+curl -s <XIAOZHI_PUBLIC_OTA_BASE_URL>/xiaozhi/ota/
 
 # Full POST mimicking the firmware
-curl -s -X POST http://<XIAOZHI_HOST>:8003/xiaozhi/ota/ \
+curl -s -X POST <XIAOZHI_PUBLIC_OTA_BASE_URL>/xiaozhi/ota/ \
   -H "Content-Type: application/json" \
   -H "Device-Id: aa:bb:cc:dd:ee:ff" \
   -H "Client-Id: test-client-001" \
@@ -225,7 +225,7 @@ curl -s -X POST http://<XIAOZHI_HOST>:8003/xiaozhi/ota/ \
 ### Verify the WebSocket URL is returned
 
 ```bash
-curl -s http://<XIAOZHI_HOST>:8003/xiaozhi/ota/ | python3 -m json.tool
+curl -s <XIAOZHI_PUBLIC_OTA_BASE_URL>/xiaozhi/ota/ | python3 -m json.tool
 ```
 
 !!! warning "Unverified"
@@ -237,12 +237,12 @@ If the device fails to connect, verify basic reachability:
 
 ```bash
 # From a machine on the same network as StackChan
-curl -v http://<XIAOZHI_HOST>:8003/xiaozhi/ota/
+curl -v <XIAOZHI_PUBLIC_OTA_BASE_URL>/xiaozhi/ota/
 ```
 
 Common failure modes:
 
-- **Connection refused** — xiaozhi-server container is down, or port 8003 is not mapped.
+- **Connection refused** — xiaozhi-server, the published Compose port, or the public gateway is down.
 - **Empty response / 404** — the container is running but the OTA route is not registered (possible image mismatch).
 - **Timeout** — firewall rules or Docker network misconfiguration.
 
@@ -253,7 +253,7 @@ Common failure modes:
 
 - **No authentication.** The OTA endpoint accepts requests from any client on the LAN. An attacker on the same network could query device info or, if they control the response, redirect the device to a malicious WebSocket server or firmware binary.
 
-- **No TLS.** The OTA URL uses plain HTTP (`http://`). The firmware binary is downloaded over HTTP too. Both are vulnerable to MITM on the LAN. The firmware does include a self-signed TLS cert for the StackChan OTA test server, but it is not used in our HTTP deployment.
+- **TLS depends on deployment.** Direct LAN deployments commonly use `http/ws`; a gateway deployment can advertise `https/wss` through the public base variables. The firmware must trust the gateway certificate chain.
 
 - **Server-side OTA handler is opaque.** The xiaozhi-esp32-server's OTA handler is part of the upstream Python codebase (not our custom provider code). We have not audited what it returns beyond what the firmware parses. The response schema documented here is reconstructed from the client side.
 
@@ -271,7 +271,7 @@ Common failure modes:
 - System info builder: `firmware/xiaozhi-esp32/main/boards/common/board.cc` — `Board::GetSystemInfoJson()`
 - OTA URL config: `firmware/main/Kconfig.projbuild` — `CONFIG_OTA_URL` default
 - StackChan sdkconfig: `firmware/firmware/sdkconfig.defaults` — `CONFIG_OTA_URL` override
-- Server config: `.config.yaml` — `server.http_port` (8003), `server.websocket` (WS URL returned in OTA response)
+- Server config: `.config.yaml` — internal `server.http_port` (8003), public `server.websocket`, and public `server.ota_base_url`
 - ESP-IDF OTA API: [esp_https_ota.h](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/system/esp_https_ota.html)
 - Upstream OTA spec reference (Chinese, Feishu doc): linked in `ota.cc` comment — `ccnphfhqs21z.feishu.cn/wiki/FjW6wZmisimNBBkov6OcmfvknVd`
 

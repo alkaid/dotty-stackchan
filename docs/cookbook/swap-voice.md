@@ -18,7 +18,7 @@ you:
 ```bash
 make voice-list                                       # see the catalog
 make voice-install VOICE=en_US-kristin-medium APPLY=1
-docker compose restart xiaozhi-server
+docker compose restart xiaozhi-esp32-server
 ```
 
 Or do it by hand:
@@ -36,7 +36,7 @@ TTS:
     model_path: models/piper/en_US-lessac-medium.onnx
 ```
 
-3. Restart: `docker compose restart xiaozhi-server`
+3. Restart: `docker compose restart xiaozhi-esp32-server`
 
 ## EdgeTTS (cloud, many voices)
 
@@ -51,7 +51,7 @@ TTS:
     voice: en-AU-WilliamNeural    # change to your pick
 ```
 
-3. Restart: `docker compose restart xiaozhi-server`
+3. Restart: `docker compose restart xiaozhi-esp32-server`
 
 ## Tips
 

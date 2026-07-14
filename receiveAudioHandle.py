@@ -27,7 +27,7 @@ MIN_UTTERANCE_CHARS = int(os.environ.get("MIN_UTTERANCE_CHARS", "2"))
 #
 # These MUST resolve to the same files the bridge dashboard writes. In the
 # container deploy DOTTY_KID_MODE_STATE / DOTTY_SMART_MODE_STATE are set (see
-# docker-compose.yml.template) to the shared /var/lib/dotty-bridge/state mount.
+# compose.yml) to the shared /var/lib/dotty-bridge/state mount.
 # The default below matches the bridge container's state dir — NOT the retired
 # /root/zeroclaw-bridge RPi path — so the toggles stay in sync even if the env
 # vars are missing.

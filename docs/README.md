@@ -25,6 +25,7 @@ re-verify claims against the canonical specs rather than trusting our paraphrase
 | Know what mode the robot is in (and what the LEDs mean) | [modes.md](./modes.md) |
 | Find features we aren't using yet | [latent-capabilities.md](./latent-capabilities.md) |
 | Pick an LLM backend | [llm-backends.md](./llm-backends.md) |
+| 部署或调整服务 | [deployment.md](./deployment.md) |
 | Run a live-device bench verification session | [bench-runbook.md](./bench-runbook.md) |
 | Jump to an upstream repo or spec | [references.md](./references.md) |
 
@@ -42,6 +43,7 @@ docs/
 ├── modes.md                 ← behavioural mode taxonomy + LED contract + transitions
 ├── latent-capabilities.md   ← upstream features we could wire up (cross-refs ROADMAP.md)
 ├── llm-backends.md          ← side-by-side comparison of LLM backend options
+├── deployment.md            ← 全栈部署手册、环境变量和调用时序
 ├── bench-runbook.md         ← ordered live-device bench session plan (epic #122)
 └── references.md            ← canonical URLs, licenses, model cards, spec docs
 ```
@@ -53,7 +55,7 @@ docs/
 - **Grep-bait headers** — e.g. `## MCP tool handshake`, `## session/prompt` — so you can navigate by header search.
 - **Relative links only** — `[voice-pipeline.md](./voice-pipeline.md)`; never absolute paths.
 - **Freshness footer** — every non-index file ends with `Last verified: YYYY-MM-DD`.
-- **Placeholders for per-deployment values** — `<XIAOZHI_HOST>`, `<XIAOZHI_USER>`, etc. (mapping lives with the deployer, not in this repo).
+- **Placeholders for per-deployment values** — `<DEPLOY_HOST>`, `<XIAOZHI_USER>`, etc. (mapping lives with the deployer, not in this repo).
 - **Soft claims where unverified** — if a fact came from a secondary source or we couldn't verify, the text says so rather than pretending to cite upstream.
 
 ## Relationship to the rest of the repo

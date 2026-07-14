@@ -10,7 +10,7 @@
 #   * Three sections:
 #       - server     — Python deps from bridge/requirements.txt, generated
 #                      with pip-licenses (must be installed on the host).
-#       - containers — image: lines from docker-compose.yml, including any
+#       - containers — image: lines from compose.yml, including any
 #                      pinned @sha256:... digests for supply-chain pinning.
 #       - firmware   — every dir under firmware/firmware/managed_components/
 #                      with its idf_component.yml version. Requires the
@@ -38,7 +38,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SBOM_OUT="${REPO_DIR}/sbom.json"
 SBOM_SERVER="${REPO_DIR}/sbom-server.json"
-COMPOSE_FILE="${REPO_DIR}/docker-compose.yml"
+COMPOSE_FILE="${REPO_DIR}/compose.yml"
 FW_COMPONENTS_DIR="${REPO_DIR}/firmware/firmware/managed_components"
 
 RED='\033[0;31m'
@@ -84,11 +84,11 @@ generate_server_section() {
 }
 
 # ─────────────────────────────────────────────────────────────────────
-# Containers section — parse image: lines from docker-compose.yml
+# Containers section — parse image: lines from compose.yml
 # ─────────────────────────────────────────────────────────────────────
 generate_containers_section() {
     if [[ ! -f "${COMPOSE_FILE}" ]]; then
-        warn "docker-compose.yml not found at ${COMPOSE_FILE}"
+        warn "compose.yml not found at ${COMPOSE_FILE}"
         printf '[]'
         return 0
     fi

@@ -28,6 +28,6 @@ Generate via `scripts/render_singing_piper.py` (Piper pitch-shift) or `scripts/r
 
 `<dance_name>.{mid,wav}` matching the key in `DANCE_REGISTRY`. If the file is missing, the dance falls back to silent choreography with an LLM-generated spoken intro.
 
-## Mounting
+## Image path
 
-The `songs/` directory is mounted read-only into the xiaozhi-server container at `/opt/xiaozhi-esp32-server/config/assets/songs/` (see `docker-compose.yml`). Reference paths from `DANCE_REGISTRY` use the in-container path: `config/assets/songs/<name>.<ext>`.
+The root Dockerfile copies `songs/` into the xiaozhi-server image at `/opt/xiaozhi-esp32-server/config/assets/songs/`. Reference paths from `DANCE_REGISTRY` use the in-container path: `config/assets/songs/<name>.<ext>`. Rebuild xiaozhi-server after changing a song. The remote deployment script preserves the host's `songs/` directory so locally sourced, gitignored media is not deleted during updates.

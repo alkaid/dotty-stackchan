@@ -91,7 +91,7 @@ The device acts as an **MCP server** — after the WS `hello` handshake, it adve
 
 Tool names follow the dotted-namespace convention from the `78/xiaozhi-esp32` MCP protocol doc (e.g. `self.audio_speaker.set_volume`, `self.get_device_status`). The **registration sites** in the firmware use `McpServer::AddTool` for public tools and `McpServer::AddUserOnlyTool` for privileged/hidden ones.
 
-Per internal deployment observation, the live firmware advertises **11 tools**. The mapping below is from that observation plus the `m5stack/StackChan` README's feature list — **verify against the handshake logs** (`docker logs xiaozhi-esp32-server | grep tools/list`) before relying on exact tool names:
+Per internal deployment observation, the live firmware advertises **11 tools**. The mapping below is from that observation plus the `m5stack/StackChan` README's feature list — **verify against the handshake logs** (`docker compose logs xiaozhi-esp32-server | grep tools/list`) before relying on exact tool names:
 
 | # | Tool (functional) | Hardware touched |
 |---|---|---|

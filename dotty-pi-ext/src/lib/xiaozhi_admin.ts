@@ -1,19 +1,14 @@
 // xiaozhi-server admin client. Lives alongside brain_db.ts and
 // llama_swap.ts as the third "infrastructure dep" the extension talks
 // to from inside the dotty-pi container. Both xiaozhi-server and pi
-// run on the Unraid host networked together, so the default URL is
-// localhost — env vars override for dev / tests.
+// run on the same Compose network, so the default URL is the xiaozhi
+// service DNS name. Env vars override for dev / tests.
 //
 // Admin auth: when DOTTY_ADMIN_TOKEN is set we attach an X-Admin-Token header
 // on every admin request, matching the xiaozhi-server /xiaozhi/admin/*
 // middleware. Unset = no header, so this is a no-op until the same token is
 // provisioned across all callers + the server. See architecture.md threat model.
 
-const DEFAULT_HOST =
-  process.env.XIAOZHI_HOST ?? process.env._XIAOZHI_HOST ?? "localhost";
-const DEFAULT_HTTP_PORT = Number(
-  process.env.XIAOZHI_HTTP_PORT ?? process.env._XIAOZHI_HTTP_PORT ?? "8003",
-);
 const DEFAULT_TIMEOUT_MS = Number(
   process.env.XIAOZHI_ADMIN_TIMEOUT_MS ?? "3000",
 );
@@ -26,9 +21,15 @@ export interface AdminOptions {
 }
 
 function buildUrl(path: string, opts: AdminOptions = {}): string {
-  const host = opts.host ?? DEFAULT_HOST;
-  const port = opts.port ?? DEFAULT_HTTP_PORT;
-  return `http://${host}:${port}${path.startsWith("/") ? path : "/" + path}`;
+  const suffix = path.startsWith("/") ? path : "/" + path;
+  if (opts.host) {
+    const port = opts.port ?? 8003;
+    return `http://${opts.host}:${port}${suffix}`;
+  }
+  const baseUrl = (
+    process.env.XIAOZHI_ADMIN_BASE_URL ?? "http://xiaozhi-esp32-server:8003"
+  ).replace(/\/+$/, "");
+  return `${baseUrl}${suffix}`;
 }
 
 async function adminFetch(

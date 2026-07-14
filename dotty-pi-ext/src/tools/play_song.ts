@@ -96,13 +96,8 @@ export async function runPlaySong(
   const trimmed = (name ?? "").trim();
   if (!trimmed) return "(no song name given)";
 
-  // XIAOZHI_HOST presence check — bridge.py short-circuits here with
-  // "(can't reach xiaozhi-server)". The TS equivalent: when neither
-  // explicit opt.host nor env XIAOZHI_HOST is set, refuse early. We
-  // can't introspect "is this localhost by default" cleanly, so use
-  // the same env contract bridge.py does.
-  if (!opts.host && !process.env.XIAOZHI_HOST) {
-    process.stderr.write(`[play_song] XIAOZHI_HOST not set\n`);
+  if (!opts.host && process.env.XIAOZHI_ADMIN_BASE_URL === "") {
+    process.stderr.write(`[play_song] XIAOZHI_ADMIN_BASE_URL not set\n`);
     return "(can't reach xiaozhi-server)";
   }
 

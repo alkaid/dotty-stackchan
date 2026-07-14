@@ -1,9 +1,12 @@
 server:
   ip: 0.0.0.0
+  # Container-internal listeners. Host-published ports are configured only in
+  # compose.yml and must not change these values.
   port: 8000
   http_port: 8003
-  websocket: ws://<XIAOZHI_HOST>:8000/xiaozhi/v1/
-  vision_explain: http://<XIAOZHI_HOST>:8090/api/vision/explain
+  websocket: <XIAOZHI_PUBLIC_WS_BASE_URL>/xiaozhi/v1/
+  ota_base_url: <XIAOZHI_PUBLIC_OTA_BASE_URL>
+  vision_explain: http://dotty-behaviour:8090/api/vision/explain
   timezone_offset: +10
 
 log:
@@ -61,7 +64,7 @@ ASR:
     output_dir: tmp/
     # SenseVoiceSmall on "auto" mis-detects Korean/Japanese on short or unclear
     # English audio. Valid values: auto, zh, en, yue (Cantonese), ja, ko, nospeech.
-    # Requires the patched fun_local.py mounted via docker-compose.yml.
+    # Requires the patched fun_local.py baked into the xiaozhi image.
     language: en
   WhisperLocal:
     type: whisper_local
@@ -73,8 +76,8 @@ ASR:
     language: en
     # Fallback model id when model_dir is empty (faster-whisper auto-fetch).
     model_size: small.en
-    # GPU-resident on CUDA hosts; `make setup` flips these to cpu/int8 when
-    # the NVIDIA Docker runtime isn't available.
+    # GPU-resident on CUDA hosts; `make setup` resolves ASR_ACCELERATION,
+    # persists the concrete values in .env, and rejects unavailable CUDA.
     device: <ASR_DEVICE>
     compute_type: <ASR_COMPUTE_TYPE>
     beam_size: 1
@@ -100,28 +103,24 @@ TTS:
     output_dir: tmp/
 
 LLM:
-  # PiVoiceLLM — routes voice turns to the `dotty-pi` container via
-  # `docker exec -i dotty-pi pi --mode rpc ...`. Pi owns the agent loop and
-  # invokes tools (memory_lookup, think_hard, play_song, remember, ...) inside
-  # the dotty-pi-ext extension; only TTS-bound text reaches xiaozhi. See
-  # custom-providers/pi_voice/README.md for the architecture + the host-docker-
-  # socket requirement (the xiaozhi container must have /var/run/docker.sock
-  # and /usr/bin/docker bind-mounted — see docker-compose.yml).
+  # PiVoiceLLM — routes voice turns to the dotty-pi HTTP RPC service over
+  # Compose DNS. Pi owns the agent loop and invokes tools (memory_lookup,
+  # think_hard, play_song, remember, ...) inside the dotty-pi-ext extension;
+  # only TTS-bound text reaches xiaozhi. DOTTY_PI_URL is provided by compose.yml.
   PiVoiceLLM:
     type: pi_voice
-    container_name: dotty-pi
+    url: http://dotty-pi:8091
 
   # Generic OpenAI-compatible provider — works with OpenAI, OpenRouter,
-  # Ollama (http://host:11434/v1), LM Studio, vLLM, etc.
+  # Ollama, LM Studio, vLLM, etc.
   OpenAICompat:
     type: openai_compat
     # Base URL for the API (must end at /v1 — the provider appends /chat/completions).
     # Examples:
     #   OpenAI:      https://api.openai.com/v1
     #   OpenRouter:  https://openrouter.ai/api/v1
-    #   Ollama:      http://localhost:11434/v1
-    #   LM Studio:   http://localhost:1234/v1
-    #   vLLM:        http://localhost:8000/v1
+    #   Ollama profile: http://ollama:11434/v1
+    #   Host service:   http://host.docker.internal:<PORT>/v1
     url: <OPENAI_COMPAT_URL>
     api_key: <OPENAI_COMPAT_API_KEY>
     model: <OPENAI_COMPAT_MODEL>

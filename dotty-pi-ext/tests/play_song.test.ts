@@ -1,8 +1,8 @@
 // play_song tests:
 //   1. Matcher equivalence vs Python oracle (exact, substring, no-match).
-//   2. Wrapper behaviour (empty input, missing host, empty catalogue,
+//   2. Wrapper behaviour (empty input, disabled admin URL, empty catalogue,
 //      dispatch success/failure) with mocked fetch.
-//   3. Optional live smoke gated by DOTTY_XIAOZHI_HOST.
+//   3. Optional live smoke gated by DOTTY_XIAOZHI_ADMIN_HOST.
 
 import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -121,18 +121,22 @@ function installFetchRoutes(routes: FetchRoute[]): () => void {
 async function testEmptyName(): Promise<void> {
   process.stdout.write("\nEmpty / whitespace name short-circuits:\n");
   _resetCacheForTests();
-  process.env.XIAOZHI_HOST = "10.0.0.99";
   const got = await runPlaySong("   ");
   assertEq("empty-name reply", got, "(no song name given)");
-  delete process.env.XIAOZHI_HOST;
 }
 
-async function testMissingHost(): Promise<void> {
-  process.stdout.write("\nMissing XIAOZHI_HOST short-circuits:\n");
+async function testDisabledAdminUrl(): Promise<void> {
+  process.stdout.write("\nDisabled XIAOZHI_ADMIN_BASE_URL short-circuits:\n");
   _resetCacheForTests();
-  delete process.env.XIAOZHI_HOST;
-  const got = await runPlaySong("twinkle");
-  assertEq("no-host reply", got, "(can't reach xiaozhi-server)");
+  const original = process.env.XIAOZHI_ADMIN_BASE_URL;
+  process.env.XIAOZHI_ADMIN_BASE_URL = "";
+  try {
+    const got = await runPlaySong("twinkle");
+    assertEq("disabled-admin-url reply", got, "(can't reach xiaozhi-server)");
+  } finally {
+    if (original === undefined) delete process.env.XIAOZHI_ADMIN_BASE_URL;
+    else process.env.XIAOZHI_ADMIN_BASE_URL = original;
+  }
 }
 
 async function testEmptyCatalogue(): Promise<void> {
@@ -194,7 +198,7 @@ async function testDispatchOk(): Promise<void> {
       assetBaseOverride: "/opt/songs",
     });
     assertEq("dispatch-success reply", got, "playing twinkle");
-    assertEq("posted url", captured.url, "http://localhost:8003/xiaozhi/admin/play-asset");
+    assertEq("posted url", captured.url, "http://xiaozhi-esp32-server:8003/xiaozhi/admin/play-asset");
     assertEq(
       "posted body",
       captured.body,
@@ -233,16 +237,15 @@ async function testDispatchFailure(): Promise<void> {
 // --- 3. Optional live smoke --------------------------------------------
 
 async function testLiveSmoke(): Promise<void> {
-  const host = process.env.DOTTY_XIAOZHI_HOST;
+  const host = process.env.DOTTY_XIAOZHI_ADMIN_HOST;
   if (!host) {
     process.stdout.write(
-      "\nLive smoke: SKIPPED (set DOTTY_XIAOZHI_HOST=<ip> to fetch real catalogue).\n",
+      "\nLive smoke: SKIPPED (set DOTTY_XIAOZHI_ADMIN_HOST=<ip> to fetch real catalogue).\n",
     );
     return;
   }
   process.stdout.write(`\nLive smoke against ${host}:8003 — fetch catalogue only:\n`);
   _resetCacheForTests();
-  process.env.XIAOZHI_HOST = host;
   const { fetchSongCatalog } = await import("../src/lib/xiaozhi_admin.ts");
   const files = await fetchSongCatalog({ host });
   if (files.length > 0) {
@@ -254,19 +257,13 @@ async function testLiveSmoke(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  // Restore default XIAOZHI_HOST handling between tests.
-  const originalHost = process.env.XIAOZHI_HOST;
   testMatcher();
   await testEmptyName();
-  await testMissingHost();
-  // Set host so subsequent tests get past the early-return.
-  process.env.XIAOZHI_HOST = "localhost";
+  await testDisabledAdminUrl();
   await testEmptyCatalogue();
   await testNoMatch();
   await testDispatchOk();
   await testDispatchFailure();
-  if (originalHost === undefined) delete process.env.XIAOZHI_HOST;
-  else process.env.XIAOZHI_HOST = originalHost;
   await testLiveSmoke();
 
   process.stdout.write(`\n${failures === 0 ? "OK" : "FAIL"} — ${failures} failure(s)\n`);

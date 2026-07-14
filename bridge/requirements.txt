@@ -1,19 +1,13 @@
 # bridge.py (admin dashboard service) Python dependencies
-# Pin to major.minor — patch bumps are safe; minors may change API.
-fastapi>=0.115,<1
-uvicorn[standard]>=0.34,<1
-pydantic>=2.9,<3
-jinja2>=3.1,<4
-python-multipart>=0.0.9,<1
+# Runtime versions are exact so rebuilding the same commit does not silently
+# select a newer framework release. Update deliberately with tests and rebuilds.
+fastapi==0.139.0
+uvicorn==0.51.0
+pydantic==2.13.4
+jinja2==3.1.6
+python-multipart==0.0.32
 # HTTP client — used by bridge.py for /admin endpoints + greeter inject-text.
-requests>=2.31,<3
+requests==2.34.2
 # Observability — Prometheus /metrics endpoint and counters/histograms.
 # Bridge degrades gracefully if the import fails; see bridge/metrics.py.
-prometheus-client>=0.20,<1
-# Household registry — bridge/household.py loads ~/.zeroclaw/household.yaml
-# so Dotty knows who lives here (display names, personality, calendar
-# prefix, self-ID phrases, birthdates). Pure-Python wheel, tiny.
-PyYAML>=6.0,<7
-# numpy — used by custom-providers/asr/whisper_local.py, piper_local,
-# receiveAudioHandle.py, and the singing/purr render scripts.
-numpy>=1.24,<3
+prometheus-client==0.25.0

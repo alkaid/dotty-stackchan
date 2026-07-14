@@ -47,6 +47,7 @@ _spec.loader.exec_module(_mod)  # type: ignore[union-attr]
 
 _is_higher = _mod._is_higher_version
 _key = _mod._parse_version
+_get_ota_base_url = _mod._get_ota_base_url
 
 
 class TestOtaVersion(unittest.TestCase):
@@ -95,6 +96,24 @@ class TestOtaVersion(unittest.TestCase):
         self.assertLess(ordered.index("1.2.3"), ordered.index("1.2.10"))
         self.assertLess(ordered.index("1.2.10"), ordered.index("1.10.0"))
         self.assertEqual(ordered[-1], "2.0.0")
+
+
+class TestOtaBaseUrl(unittest.TestCase):
+    def test_configured_public_base_wins_over_internal_listener(self):
+        config = {
+            "http_port": 8003,
+            "ota_base_url": "http://192.0.2.10:5002/",
+        }
+        self.assertEqual(
+            _get_ota_base_url(config, "172.19.0.4"),
+            "http://192.0.2.10:5002",
+        )
+
+    def test_legacy_config_falls_back_to_internal_address(self):
+        self.assertEqual(
+            _get_ota_base_url({"http_port": 8003}, "172.19.0.4"),
+            "http://172.19.0.4:8003",
+        )
 
 
 if __name__ == "__main__":

@@ -1,18 +1,14 @@
 # dotty-behaviour Python dependencies.
 # Mirrors bridge/requirements.txt minus the dependencies tied to the
-# obsolete /api/message + ZeroClaw stdio path. Pin to major.minor —
-# patch bumps are safe; minors may change API.
-fastapi>=0.115,<1
-uvicorn[standard]>=0.34,<1
-pydantic>=2.9,<3
-jinja2>=3.1,<4
-python-multipart>=0.0.9,<1
+# obsolete /api/message + ZeroClaw stdio path. Runtime versions are exact so
+# rebuilding the same commit does not silently select newer framework releases.
+fastapi==0.139.0
+uvicorn==0.51.0
+pydantic==2.13.4
+python-multipart==0.0.32
 # HTTP client — outbound dispatchers (xiaozhi admin, llama-swap narrative
 # LLM, OpenRouter VLM/ASR proxy), greeter inject-text push.
-requests>=2.31,<3
-# Observability — Prometheus /metrics endpoint and counters/histograms.
-# Daemon degrades gracefully if the import fails.
-prometheus-client>=0.20,<1
+requests==2.34.2
 # Household registry — household.yaml parsing (display names, calendar
 # prefixes, self-ID phrases, birthdates). Pure-Python wheel, tiny.
-PyYAML>=6.0,<7
+PyYAML==6.0.3

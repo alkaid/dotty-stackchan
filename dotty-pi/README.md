@@ -6,87 +6,105 @@ per [#36](https://github.com/BrettKinny/dotty-stackchan/issues/36).
 
 ## What this is
 
-A pinned `node:25.9-alpine3.23` image with `@earendil-works/pi-coding-agent`
-installed globally. Idles via `sleep infinity`; voice turns invoke pi on
-demand via `docker exec -i` from the Unraid-local `PiClient` (lives in
-[`../custom-providers/pi_voice/`](../custom-providers/pi_voice/)).
+A pinned `node:22.17-alpine3.22` LTS image with `@earendil-works/pi-coding-agent`
+installed globally. The image also bakes in `dotty-pi-ext` and renders
+`/root/.pi/agent/models.json` from compose `.env` variables at container
+start. It exposes a small HTTP RPC service on port 8091; xiaozhi-server calls
+that service over the compose network.
 
 The runtime contract is:
 
 - **xiaozhi-server** routes voice-LLM calls to the `PiVoiceLLM` provider.
-- **PiVoiceLLM / PiClient** translates each turn into a pi RPC request.
-- **pi** (this container) runs the prompt against llama-swap on the same
-  host (`http://localhost:8080/v1`, model `qwen3.6:27b` by default), with
+- **PiVoiceLLM / PiHttpClient** translates each turn into an HTTP request to
+  `dotty-pi:8091`.
+- **pi** (this container) runs the prompt against the `sub2api`
+  OpenAI-compatible provider (`dotty-simple` by default), with
   the [`dotty-pi-ext`](../dotty-pi-ext/) extension loaded for the seven
   voice tools (`memory_lookup`, `remember`, `recall_person`,
   `remember_person`, `think_hard`, `take_photo`, `play_song`).
 
-## Build + run on Unraid
+## Build + run
 
-Use the deploy script — it ships the build context, config, and extension
-source, builds the pinned image, recreates the container, and healthchecks:
+`dotty-pi` is started by the root stack compose file:
 
 ```bash
-DOTTY_PI_HOST=root@<UNRAID_HOST> bash scripts/deploy-dotty-pi.sh
+docker compose up -d --build dotty-pi
 ```
 
-The script is the repeatable replacement for the old hand-run
-`docker build … && docker compose up -d`. It writes only the build context,
-`agent/models.json`, and `extensions/dotty-pi-ext/` — it never touches the
-live `memory/brain.db` or `persona/`, and it preserves the extension's
-hand-compiled `node_modules` (deps are unchanged; see
-[`scripts/deploy-dotty-pi.sh`](../scripts/deploy-dotty-pi.sh) for the full
-contract). A functional voice-tool smoke test is a manual post-deploy step
-(the script prints the reminder) — keep the agent loop on `qwen3.5:4b`.
+For remote Unraid deployment, use the single stack deploy wrapper from the
+repo root:
+
+```bash
+DOTTY_HOST=root@<UNRAID_HOST> bash scripts/deploy-stack.sh
+```
 
 On-box layout (build context and live state are **separate** directories):
 
 ```
 /mnt/user/appdata/
-├── dotty-pi-src/                # build context (SRC_DIR)
-│   ├── Dockerfile
-│   └── docker-compose.yml
-└── dotty-pi/                    # bind-mount → /root/.pi (STATE_DIR)
-    ├── agent/
-    │   ├── models.json          # provider config (deployed)
+├── dotty-stackchan-src/         # repo checkout and compose.yml
+└── dotty-pi/                    # persistent state (STATE_DIR)
+    ├── agent/                   # bind-mount → /root/.pi/agent
+    │   ├── models.json          # rendered from .env at container start
     │   ├── auth.json            # live — never touched by deploy
     │   └── sessions/            # live — never touched by deploy
-    ├── persona/                 # Dotty persona — migrated from RPi (live)
-    ├── memory/
+    ├── memory/                  # bind-mount → /root/.pi/memory
     │   └── brain.db             # FTS5 store — migrated from RPi (live)
-    ├── sessions/                # pi session state (unused for now)
-    └── extensions/
-        └── dotty-pi-ext/        # voice-tool extension source (deployed)
-            └── node_modules/    # hand-compiled better-sqlite3 (preserved)
+    └── sessions/                # bind-mount → /root/.pi/sessions
 ```
 
-## Model selection — DO NOT use `qwen3.6:27b` here
+## Model selection — sub2api split routes
 
-llama-swap (`/mnt/user/appdata/llama-swap/config.yaml`) groups models
-into matrix sets — `voice` (resident: `qwen3.5:4b` + `qwen3.6:27b-think`)
-and `coding` (resident: `qwen3.6:27b` alone). Requesting the coding-set
-model evicts both voice models; reloading either is a 30–50 s cold hit.
+`dotty-pi/render-models-json.mjs` renders a `sub2api` provider with two
+model entries. `dotty-pi/models.json` is the checked-in example shape; the
+live file is generated from `.env` each time the container starts.
 
-The cutover model split (validated 2026-05-17 end-to-end):
+The voice model split is:
 
 | Loop | Model | Why |
 |---|---|---|
-| Outer agent (`pi --model …`) | `qwen3.5:4b` | Fast, in voice set, drives tool-routing reliably enough for Dotty's flat tool surface. |
-| `think_hard` escalation | `qwen3.6:27b-think` | The 8K-context 27B, in voice set, resident alongside 4B. Direct llama-swap POST inside the extension; no agent overhead. |
+| Outer agent (`pi --model ...`) | `dotty-simple` | Fast/simple chat and tool-routing model. This is the default in `dotty-pi` RPC. |
+| `think_hard` escalation | `dotty-think` | Larger or reasoning-capable model. Called directly by the extension; no agent overhead. |
 
-**Never** call `pi --model qwen3.6:27b` from this container — it evicts
-`qwen3.6:27b-think` and the next `think_hard` call times out at 30 s
-waiting for the cold reload. The integration test on 2026-05-17 caught
-this exact failure (returned `"(I'm slow today, try again in a moment)"`
-twice before the fix).
+Host `.env` example:
 
-Measured wall-clock for the 4B + 27B-think split:
+```env
+DOTTY_PI_BASE_URL=https://DOTTY_PI_BASE_URL_PLACEHOLDER/v1
+DOTTY_PI_API_KEY=sk-...
+DOTTY_PI_PROVIDER=sub2api
+DOTTY_PI_MODEL=dotty-simple
+DOTTY_PI_SYSTEM_PROMPT_FILE=/opt/dotty-pi/personas/dotty_voice.md
+DOTTY_PI_SIMPLE_REASONING=false
+DOTTY_PI_THINK_REASONING=true
+DOTTY_PI_THINK_REASONING_EFFORT=high
+DOTTY_PI_THINK_MAX_TOKENS=4096
+VOICE_THINKER_MODEL=dotty-think
+# Optional when the thinker endpoint or key differs from the simple route.
+VOICE_THINKER_URL=
+VOICE_THINKER_API_KEY=sk-...
+```
 
-- `memory_lookup` (no LLM escalation): ~5.8 s total (4B turn + tool + reply)
-- `think_hard` ("reply with `pong`"): ~45 s total warm (4B turn + tool fires inner 27B-think call + reply)
+When `VOICE_THINKER_URL` is empty, the extension appends
+`/chat/completions` to `DOTTY_PI_BASE_URL`. The direct request uses
+`DOTTY_PI_THINK_REASONING`, `DOTTY_PI_THINK_REASONING_EFFORT`, and
+`DOTTY_PI_THINK_MAX_TOKENS`.
 
-The `models.json` shipped here registers all three aliases but the agent
-loop should always target `qwen3.5:4b`.
+The dotty-pi RPC server owns the outer `pi --model ...` argument, so the
+stack `.env` must match the simple route:
+
+```env
+DOTTY_PI_PROVIDER=sub2api
+DOTTY_PI_MODEL=dotty-simple
+```
+
+The extension dependencies are built in a separate image stage so native
+modules can use their Node 22 prebuilt binaries without shipping a compiler.
+The image also bakes in `personas/` and passes the selected file as pi's
+system prompt. Pi starts with `--no-builtin-tools`; voice turns can use only
+the tools registered by `dotty-pi-ext`, not shell or file-editing tools.
+
+See [`../docs/deployment.md`](../docs/deployment.md) for the full runbook and
+the maintenance rule for future deployment changes.
 
 ## Versioning
 

@@ -52,6 +52,13 @@ def _is_higher_version(a: str, b: str) -> bool:
     return _parse_version(a) > _parse_version(b)
 
 
+def _get_ota_base_url(server_config: dict, local_ip: str) -> str:
+    configured = str(server_config.get("ota_base_url", "")).strip().rstrip("/")
+    if configured:
+        return configured
+    return f"http://{local_ip}:{int(server_config.get('http_port', 8003))}"
+
+
 class OTAHandler(BaseHandler):
     def __init__(self, config: dict):
         super().__init__(config)
@@ -187,8 +194,8 @@ class OTAHandler(BaseHandler):
             # - websocket_port is used to construct websocket URL (server["port"])
             # - http_port is used to construct OTA download URLs (server["http_port"])
             websocket_port = int(server_config.get("port", 8000))
-            http_port = int(server_config.get("http_port", 8003))
             local_ip = get_local_ip()
+            ota_base_url = _get_ota_base_url(server_config, local_ip)
 
             # Determine device model (prefer headers)
             device_model = ""
@@ -322,7 +329,8 @@ class OTAHandler(BaseHandler):
                 # candidates are sorted descending by version
                 for ver, fname in candidates:
                     if _is_higher_version(ver, device_version):
-                        # Compose the download URL directly from local IP + http_port.
+                        # Use the client-reachable base URL, which may differ from
+                        # the container's internal HTTP listener and published port.
                         #
                         # Upstream uses `vision_url.replace("/mcp/vision/explain",
                         # f"/xiaozhi/ota/download/{fname}")` on the configured
@@ -336,7 +344,7 @@ class OTAHandler(BaseHandler):
                         # URL, returning 405.
                         chosen_version = ver
                         chosen_url = (
-                            f"http://{local_ip}:{http_port}/xiaozhi/ota/download/{fname}"
+                            f"{ota_base_url}/xiaozhi/ota/download/{fname}"
                         )
                         break
 

@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
     log.info(
         "config: port=%d xiaozhi=%s narrative_model=%s state_dir=%s log_dir=%s",
         config.PORT,
-        config.XIAOZHI_HOST or "(disabled)",
+        config.XIAOZHI_ADMIN_BASE_URL or "(disabled)",
         config.NARRATIVE_MODEL,
         config.STATE_DIR,
         config.LOG_DIR,
@@ -80,7 +80,7 @@ async def lifespan(app: FastAPI):
     # Singleton dispatch clients — outbound HTTP to xiaozhi-server's
     # /xiaozhi/admin/* surface, the llama-swap narrative LLM, and the
     # OpenRouter VLM.
-    xiaozhi = XiaozhiAdminClient(config.XIAOZHI_HOST, config.XIAOZHI_HTTP_PORT)
+    xiaozhi = XiaozhiAdminClient(config.XIAOZHI_ADMIN_BASE_URL)
     narrative = NarrativeLLMClient(
         config.NARRATIVE_LLM_URL,
         config.NARRATIVE_MODEL,

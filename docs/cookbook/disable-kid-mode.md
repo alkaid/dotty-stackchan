@@ -16,7 +16,11 @@ Set the environment variable (in `.env` or the shell environment):
 DOTTY_KID_MODE=false
 ```
 
-Restart the bridge container: `docker compose restart bridge`
+Recreate the stack so every service receives the updated environment:
+
+```bash
+docker compose up -d
+```
 
 ## What changes (removed)
 

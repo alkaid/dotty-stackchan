@@ -85,5 +85,26 @@ class TestProjectRoot(unittest.TestCase):
         self.assertNotIn("data/models", res.detail)
 
 
+class TestPublicEndpoints(unittest.TestCase):
+    def test_extracts_wss_endpoint_and_explicit_port(self):
+        config = "websocket: wss://voice.example.test:5443/xiaozhi/v1/\n"
+        self.assertEqual(
+            _mod._extract_websocket_endpoint(config),
+            ("voice.example.test", 5443),
+        )
+
+    def test_wss_defaults_to_port_443(self):
+        self.assertEqual(
+            _mod._parse_url_endpoint("wss://voice.example.test", {"ws", "wss"}),
+            ("voice.example.test", 443),
+        )
+
+    def test_rejects_wrong_scheme(self):
+        self.assertEqual(
+            _mod._parse_url_endpoint("https://voice.example.test", {"ws", "wss"}),
+            (None, None),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2,11 +2,12 @@
 
 Signed double-submit cookie pattern. The middleware issues a `dotty_csrf`
 cookie containing a random per-session token plus an HMAC signature.
-Mutating requests under `/ui/` must echo the raw token back in the
+Mutating browser requests under `/ui/` must echo the raw token back in the
 `X-CSRF-Token` header (htmx does this via the configRequest listener in
 dashboard.html, which reads the token from a `<meta name="csrf-token">`
-tag). API endpoints under `/api/...`, `/metrics`, and `/health` are
-exempt — they're machine-to-machine and have their own auth model.
+tag). Machine endpoints under `/admin/...` and `/api/...`, plus `/metrics`
+and `/health`, are exempt. `/admin/...` uses `X-Admin-Token`; the other
+machine endpoints retain their own auth model.
 
 Kill switch: set `DOTTY_CSRF_ENFORCE=0` to log-only mode (cookie still
 issued, mismatches logged as `csrf would-block`, requests pass through).
@@ -30,17 +31,20 @@ log = logging.getLogger("csrf")
 COOKIE_NAME = "dotty_csrf"
 HEADER_NAME = "X-CSRF-Token"
 _MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
-_EXEMPT_PREFIXES = ("/api/", "/metrics", "/health")
+_EXEMPT_PREFIXES = ("/admin/", "/api/", "/metrics", "/health")
 
 
 def _load_secret() -> bytes:
     env = os.environ.get("DOTTY_CSRF_SECRET", "").strip()
     if env:
         return env.encode("utf-8")
+    admin_token = os.environ.get("DOTTY_ADMIN_TOKEN", "").strip()
+    if admin_token:
+        return sha256(b"dotty-csrf-v1\0" + admin_token.encode("utf-8")).digest()
     log.warning(
-        "DOTTY_CSRF_SECRET not set — using ephemeral secret. "
+        "DOTTY_CSRF_SECRET and DOTTY_ADMIN_TOKEN are not set; using an ephemeral secret. "
         "CSRF tokens will not survive a bridge restart. "
-        "Set DOTTY_CSRF_SECRET in /etc/default/zeroclaw-bridge for production."
+        "Set DOTTY_ADMIN_TOKEN or DOTTY_CSRF_SECRET in the root .env."
     )
     return secrets.token_urlsafe(32).encode("utf-8")
 

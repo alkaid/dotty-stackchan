@@ -1,0 +1,225 @@
+services:
+  xiaozhi-esp32-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+    image: ${XIAOZHI_IMAGE_TAG:-xiaozhi-esp32-server-piper:local}
+    restart: unless-stopped
+    # make setup resolves this to nvidia/all or runc/void, then runs a
+    # ctranslate2 probe through this exact service before starting the stack.
+    runtime: ${XIAOZHI_CONTAINER_RUNTIME:-runc}
+    environment:
+      TZ: ${TZ:-Australia/Brisbane}
+      PERSONA: ${PERSONA:-default}
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-void}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
+      VISION_BRIDGE_URL: http://dotty-behaviour:8090
+      BRIDGE_URL: http://dotty-behaviour:8090
+      DOTTY_PI_URL: http://dotty-pi:8091
+      DOTTY_PI_TURN_TIMEOUT_SEC: ${DOTTY_PI_TURN_TIMEOUT_SEC:-120}
+      DOTTY_KID_MODE: ${DOTTY_KID_MODE:-true}
+      DOTTY_ADMIN_TOKEN: ${DOTTY_ADMIN_TOKEN:-}
+      DOTTY_KID_MODE_STATE: /var/lib/dotty-bridge/state/kid-mode
+      DOTTY_SMART_MODE_STATE: /var/lib/dotty-bridge/state/smart-mode
+      MIN_UTTERANCE_CHARS: ${MIN_UTTERANCE_CHARS:-2}
+    ports:
+      - "${XIAOZHI_WS_PORT:-8000}:8000"
+      - "${XIAOZHI_HTTP_PORT:-8003}:8003"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data/.config.yaml:/opt/xiaozhi-esp32-server/data/.config.yaml:ro
+      - ./data/bin:/opt/xiaozhi-esp32-server/data/bin
+      - ./models/SenseVoiceSmall:/opt/xiaozhi-esp32-server/models/SenseVoiceSmall:ro
+      - ./models/piper:/opt/xiaozhi-esp32-server/models/piper:ro
+      - ./models/whisper-small.en-ct2:/opt/xiaozhi-esp32-server/models/whisper-small.en-ct2:ro
+      - ./tmp:/opt/xiaozhi-esp32-server/tmp
+      - ${DOTTY_BRIDGE_STATE_DIR:-/mnt/user/appdata/dotty-bridge/state}:/var/lib/dotty-bridge/state:ro
+    depends_on:
+      dotty-pi:
+        condition: service_healthy
+      dotty-behaviour:
+        condition: service_healthy
+
+  dotty-pi:
+    build:
+      context: .
+      dockerfile: dotty-pi/Dockerfile
+      args:
+        NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-https://registry.npmjs.org}
+    image: ${DOTTY_PI_IMAGE_TAG:-dotty-pi:0.1.0}
+    restart: unless-stopped
+    init: true
+    environment:
+      DOTTY_PI_RPC_PORT: 8091
+      DOTTY_PI_TURN_TIMEOUT_MS: ${DOTTY_PI_TURN_TIMEOUT_MS:-120000}
+      DOTTY_PI_EXTRA_FLAGS: ${DOTTY_PI_EXTRA_FLAGS:-}
+      DOTTY_PI_SYSTEM_PROMPT_FILE: ${DOTTY_PI_SYSTEM_PROMPT_FILE:-/opt/dotty-pi/personas/dotty_voice.md}
+      DOTTY_ADMIN_TOKEN: ${DOTTY_ADMIN_TOKEN:-}
+      DOTTY_KID_MODE: ${DOTTY_KID_MODE:-true}
+      XIAOZHI_ADMIN_BASE_URL: http://xiaozhi-esp32-server:8003
+      DOTTY_BEHAVIOUR_URL: http://dotty-behaviour:8090
+      DOTTY_BEHAVIOUR_TIMEOUT_MS: ${DOTTY_BEHAVIOUR_TIMEOUT_MS:-3000}
+      DOTTY_PI_BASE_URL: ${DOTTY_PI_BASE_URL:-https://DOTTY_PI_BASE_URL_PLACEHOLDER/v1}
+      DOTTY_PI_API_KEY: ${DOTTY_PI_API_KEY:-DOTTY_PI_API_KEY_PLACEHOLDER}
+      DOTTY_PI_PROVIDER: ${DOTTY_PI_PROVIDER:-sub2api}
+      DOTTY_PI_MODEL: ${DOTTY_PI_MODEL:-dotty-simple}
+      DOTTY_PI_PROVIDER_API: ${DOTTY_PI_PROVIDER_API:-openai-completions}
+      DOTTY_PI_SUPPORTS_DEVELOPER_ROLE: ${DOTTY_PI_SUPPORTS_DEVELOPER_ROLE:-false}
+      DOTTY_PI_SUPPORTS_REASONING_EFFORT: ${DOTTY_PI_SUPPORTS_REASONING_EFFORT:-true}
+      DOTTY_PI_SIMPLE_MODEL_NAME: ${DOTTY_PI_SIMPLE_MODEL_NAME:-Dotty simple route (sub2api)}
+      DOTTY_PI_SIMPLE_REASONING: ${DOTTY_PI_SIMPLE_REASONING:-false}
+      DOTTY_PI_SIMPLE_REASONING_EFFORT: ${DOTTY_PI_SIMPLE_REASONING_EFFORT-}
+      DOTTY_PI_SIMPLE_CONTEXT_WINDOW: ${DOTTY_PI_SIMPLE_CONTEXT_WINDOW:-128000}
+      DOTTY_PI_SIMPLE_MAX_TOKENS: ${DOTTY_PI_SIMPLE_MAX_TOKENS:-2048}
+      DOTTY_PI_THINK_MODEL_NAME: ${DOTTY_PI_THINK_MODEL_NAME:-Dotty think_hard route (sub2api)}
+      DOTTY_PI_THINK_REASONING: ${DOTTY_PI_THINK_REASONING:-true}
+      DOTTY_PI_THINK_REASONING_EFFORT: ${DOTTY_PI_THINK_REASONING_EFFORT:-high}
+      DOTTY_PI_THINK_CONTEXT_WINDOW: ${DOTTY_PI_THINK_CONTEXT_WINDOW:-128000}
+      DOTTY_PI_THINK_MAX_TOKENS: ${DOTTY_PI_THINK_MAX_TOKENS:-4096}
+      VOICE_THINKER_URL: ${VOICE_THINKER_URL-}
+      VOICE_THINKER_MODEL: ${VOICE_THINKER_MODEL:-dotty-think}
+      VOICE_THINKER_API_KEY: ${VOICE_THINKER_API_KEY-}
+      VOICE_THINKER_TIMEOUT: ${VOICE_THINKER_TIMEOUT:-30}
+    ports:
+      - "127.0.0.1:${DOTTY_PI_RPC_PORT:-8091}:8091"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${DOTTY_PI_STATE_DIR:-/mnt/user/appdata/dotty-pi}/agent:/root/.pi/agent
+      - ${DOTTY_PI_STATE_DIR:-/mnt/user/appdata/dotty-pi}/memory:/root/.pi/memory
+      - ${DOTTY_PI_STATE_DIR:-/mnt/user/appdata/dotty-pi}/sessions:/root/.pi/sessions
+
+  dotty-behaviour:
+    build:
+      context: ./dotty-behaviour
+      dockerfile: Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+    image: ${DOTTY_BEHAVIOUR_IMAGE_TAG:-dotty-behaviour:0.1.0}
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: ${TZ:-Australia/Brisbane}
+      DOTTY_BEHAVIOUR_HOST: 0.0.0.0
+      DOTTY_BEHAVIOUR_PORT: 8090
+      XIAOZHI_ADMIN_BASE_URL: http://xiaozhi-esp32-server:8003
+      DOTTY_ADMIN_TOKEN: ${DOTTY_ADMIN_TOKEN:-}
+      NARRATIVE_LLM_URL: ${NARRATIVE_LLM_URL:-http://host.docker.internal:8080/v1}
+      NARRATIVE_MODEL: ${NARRATIVE_MODEL:-qwen3.6:27b-think}
+      NARRATIVE_TIMEOUT_SEC: ${NARRATIVE_TIMEOUT_SEC:-90}
+      DOTTY_STATE_DIR: /var/lib/dotty-behaviour/state
+      CONVO_LOG_DIR: /var/lib/dotty-behaviour/logs
+      DOTTY_SECRETS_DIR: /var/lib/dotty-behaviour/secrets
+      HOUSEHOLD_YAML_PATH: /var/lib/dotty-behaviour/state/household.yaml
+      GREETER_STATE_PATH: /var/lib/dotty-behaviour/state/greeter_state.json
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY-}
+      VISION_API_KEY: ${VISION_API_KEY-}
+      VISION_MODEL: ${VISION_MODEL:-google/gemini-2.0-flash-001}
+      VISION_API_URL: ${VISION_API_URL:-https://openrouter.ai/api/v1/chat/completions}
+      VLM_API_KEY: ${VLM_API_KEY-}
+      VLM_MODEL: ${VLM_MODEL:-google/gemini-2.0-flash-001}
+      VLM_API_URL: ${VLM_API_URL:-https://openrouter.ai/api/v1/chat/completions}
+      AUDIO_CAPTION_API_KEY: ${AUDIO_CAPTION_API_KEY-}
+      AUDIO_CAPTION_MODEL: ${AUDIO_CAPTION_MODEL:-google/gemini-2.0-flash-001}
+      AUDIO_CAPTION_API_URL: ${AUDIO_CAPTION_API_URL:-https://openrouter.ai/api/v1/chat/completions}
+      FACE_GREET_TEXT: ${FACE_GREET_TEXT-Hi!}
+      FACE_GREET_MIN_INTERVAL_SEC: ${FACE_GREET_MIN_INTERVAL_SEC:-30}
+      FACE_GREET_COOLDOWN_SEC: ${FACE_GREET_COOLDOWN_SEC:-30}
+      PURR_AUDIO_PATH: /opt/xiaozhi-esp32-server/config/assets/purr.opus
+      PURR_COOLDOWN_SEC: ${PURR_COOLDOWN_SEC:-5}
+      PURR_DURATION_SEC: ${PURR_DURATION_SEC:-2.0}
+      SPEAKER_STICKY_SEC: ${SPEAKER_STICKY_SEC:-600}
+      SPEAKER_CALENDAR_WINDOW_MIN: ${SPEAKER_CALENDAR_WINDOW_MIN:-30}
+      SPEAKER_PERCEPTION_WINDOW_SEC: ${SPEAKER_PERCEPTION_WINDOW_SEC:-30}
+      SPEAKER_ASK_THRESHOLD: ${SPEAKER_ASK_THRESHOLD:-0.5}
+      GREETER_ENABLED: ${GREETER_ENABLED:-true}
+      GREETER_USE_FACE_DETECTED: ${GREETER_USE_FACE_DETECTED:-false}
+      GREETER_GREET_UNKNOWN: ${GREETER_GREET_UNKNOWN:-false}
+      GREETER_COOLDOWN_HOURS: ${GREETER_COOLDOWN_HOURS:-4}
+      GREETER_PER_DAY_MAX: ${GREETER_PER_DAY_MAX:-3}
+      GREETER_GREETING_MAX_WORDS: ${GREETER_GREETING_MAX_WORDS:-15}
+      DOTTY_BLIND_MODE: ${DOTTY_BLIND_MODE:-true}
+      DOTTY_BLIND_LAT: ${DOTTY_BLIND_LAT:--27.47}
+      DOTTY_BLIND_LON: ${DOTTY_BLIND_LON:-153.03}
+      DOTTY_BLIND_PHOTO_REPLY: ${DOTTY_BLIND_PHOTO_REPLY-It's too dark to see right now. Can you turn a light on?}
+      CALENDAR_ID: ${CALENDAR_ID-}
+      CALENDAR_SA_PATH: /var/lib/dotty-behaviour/secrets/google-calendar-sa.json
+      CALENDAR_POLL_SEC: ${CALENDAR_POLL_SEC:-900}
+      CALENDAR_HOUSEHOLD_BUCKET: ${CALENDAR_HOUSEHOLD_BUCKET:-_household}
+      CALENDAR_PERSON_PREFIX_RE: ${CALENDAR_PERSON_PREFIX_RE-}
+    ports:
+      - "${DOTTY_BEHAVIOUR_PORT:-8090}:8090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${DOTTY_BEHAVIOUR_STATE_DIR:-/mnt/user/appdata/dotty-behaviour}/state:/var/lib/dotty-behaviour/state
+      - ${DOTTY_BEHAVIOUR_STATE_DIR:-/mnt/user/appdata/dotty-behaviour}/logs:/var/lib/dotty-behaviour/logs
+      - ${DOTTY_BEHAVIOUR_STATE_DIR:-/mnt/user/appdata/dotty-behaviour}/secrets:/var/lib/dotty-behaviour/secrets:ro
+
+  dotty-bridge:
+    build:
+      context: .
+      dockerfile: bridge/Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        BRIDGE_VERSION: ${BRIDGE_VERSION:-unknown}
+    image: ${DOTTY_BRIDGE_IMAGE_TAG:-dotty-bridge:0.1.0}
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: ${TZ:-Australia/Brisbane}
+      PORT: 8081
+      PYTHONUNBUFFERED: "1"
+      DOTTY_BRIDGE_HOST: 0.0.0.0
+      DOTTY_BRIDGE_LOG_LEVEL: ${DOTTY_BRIDGE_LOG_LEVEL:-info}
+      XIAOZHI_ADMIN_BASE_URL: http://xiaozhi-esp32-server:8003
+      XIAOZHI_INTERNAL_WS_PORT: 8000
+      DOTTY_BEHAVIOUR_URL: http://dotty-behaviour:8090
+      DOTTY_KID_MODE: ${DOTTY_KID_MODE:-true}
+      DOTTY_KID_MODE_STATE: /var/lib/dotty-bridge/state/kid-mode
+      DOTTY_SMART_MODE_STATE: /var/lib/dotty-bridge/state/smart-mode
+      CONVO_LOG_DIR: /var/lib/dotty-bridge/logs
+      HOUSEHOLD_YAML_PATH: /var/lib/dotty-bridge/state/household.yaml
+      CALENDAR_SA_PATH: /var/lib/dotty-bridge/secrets/google-calendar-sa.json
+      VOICE_MEMORY_DB: /var/lib/dotty-pi-memory/brain.db
+      DOTTY_ADMIN_TOKEN: ${DOTTY_ADMIN_TOKEN:-}
+      DOTTY_CSRF_SECRET: ${DOTTY_CSRF_SECRET-}
+      DOTTY_CSRF_ENFORCE: ${DOTTY_CSRF_ENFORCE:-1}
+      DOTTY_DASHBOARD_USER: ${DOTTY_DASHBOARD_USER-}
+      DOTTY_DASHBOARD_PASS: ${DOTTY_DASHBOARD_PASS-}
+      DOTTY_DEFAULT_MODEL: ${DOTTY_PI_MODEL:-dotty-simple}
+      SMART_MODEL: ${VOICE_THINKER_MODEL:-dotty-think}
+    ports:
+      - "${DOTTY_BRIDGE_PORT:-8081}:8081"
+    volumes:
+      - ${DOTTY_BRIDGE_STATE_DIR:-/mnt/user/appdata/dotty-bridge}/state:/var/lib/dotty-bridge/state
+      - ${DOTTY_BRIDGE_STATE_DIR:-/mnt/user/appdata/dotty-bridge}/logs:/var/lib/dotty-bridge/logs
+      - ${DOTTY_BRIDGE_STATE_DIR:-/mnt/user/appdata/dotty-bridge}/secrets:/var/lib/dotty-bridge/secrets:ro
+      - ${DOTTY_PI_STATE_DIR:-/mnt/user/appdata/dotty-pi}/memory:/var/lib/dotty-pi-memory
+    depends_on:
+      xiaozhi-esp32-server:
+        condition: service_healthy
+      dotty-behaviour:
+        condition: service_healthy
+
+  ollama:
+    profiles: [local-llm]
+    image: ollama/ollama@sha256:509fdf54e23bd50d87af646cb51c0a7a203d6a83cc4d6695b3b08c5be1c62c0a
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  ollama_data:

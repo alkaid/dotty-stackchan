@@ -141,7 +141,7 @@ class EventTextMessageHandler(TextMessageHandler):
                             conn, "_room_description_in_flight", False)):
                     # Imported lazily — receiveAudioHandle imports
                     # core.* modules that aren't available at module
-                    # import time in some test contexts. The bind-mount
+                    # import time in some test contexts. The image copy
                     # target inside the xiaozhi container is the
                     # `core.handle.receiveAudioHandle` package path, NOT
                     # a top-level module — the bare `from receiveAudioHandle`

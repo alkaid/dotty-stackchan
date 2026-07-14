@@ -132,7 +132,7 @@ LLM:
 
 The default in the shipped `.config.yaml`. The `PiVoiceLLM` provider routes each voice turn to the **dotty-pi container** — the pi coding agent running on the same Docker host as xiaozhi-server.
 
-`PiClient` drives the agent by running `docker exec -i dotty-pi pi --mode rpc …` and exchanging JSONL messages over its stdin/stdout. The agent's outer loop uses `qwen3.5:4b` on local llama-swap for fast chitchat and loads the **dotty-pi-ext extension**, which exposes five voice-focused tools:
+`PiHttpClient` drives the agent by calling the dotty-pi HTTP RPC wrapper on `dotty-pi:8091`. The wrapper owns `pi --mode rpc` inside the dotty-pi container. The agent's outer loop uses `dotty-simple` through sub2api and loads the **dotty-pi-ext extension**, which exposes five voice-focused tools:
 
 | Tool | Purpose |
 |---|---|
@@ -158,7 +158,7 @@ selected_module:
 LLM:
   PiVoiceLLM:
     type: pi_voice
-    container_name: dotty-pi
+    url: http://dotty-pi:8091
 ```
 
 ### Notes
@@ -170,7 +170,7 @@ LLM:
 ## Switching backends
 
 1. Edit `.config.yaml` — change `selected_module.LLM` and the relevant `LLM:` block.
-2. Restart xiaozhi-server: `docker compose restart xiaozhi-server`.
+2. Restart xiaozhi-server: `docker compose restart xiaozhi-esp32-server`.
 3. Test with a voice command or a `curl` to the health endpoint.
 
 All `LLM:` blocks can coexist in the config; only the one named in `selected_module.LLM` is active.

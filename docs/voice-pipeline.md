@@ -8,10 +8,10 @@ description: xiaozhi-esp32-server pipeline stages -- VAD, ASR, LLM proxy, and TT
 ## TL;DR
 
 - **Server** is `xinnan-tech/xiaozhi-esp32-server` running in Docker on a Linux host. Plugin-based: each of VAD, ASR, LLM, TTS, Memory, Intent is a swappable provider picked via `data/.config.yaml`'s `selected_module:` block.
-- Our live pipeline: **SileroVAD** (speech-end) → **FunASR SenseVoiceSmall** or **WhisperLocal** (ASR, pinned to English) → **PiVoiceLLM** custom provider (current default — `docker exec -i dotty-pi pi --mode rpc` over stdio, brain is the `dotty-pi` container) or **OpenAICompat** (alternate — points straight at any OpenAI-compatible endpoint) → **LocalPiper** en_GB-cori-medium (TTS; EdgeTTS / StreamingEdgeTTS as alternates).
+- Our live pipeline: **SileroVAD** (speech-end) → **FunASR SenseVoiceSmall** or **WhisperLocal** (ASR, pinned to English) → **PiVoiceLLM** custom provider (current default; HTTP RPC to the `dotty-pi` container) or **OpenAICompat** (alternate; points straight at any OpenAI-compatible endpoint) → **LocalPiper** en_GB-cori-medium (TTS; EdgeTTS / StreamingEdgeTTS as alternates).
 - The xiaozhi container also runs a perception relay (`EventTextMessageHandler`) that forwards firmware `face_detected` / `face_lost` / `sound_event` / `state_changed` frames to `dotty-behaviour`'s `/api/perception/event`.
 - **Emotion** is not a pipeline stage — it's extracted post-hoc from the LLM's emoji prefix and emitted as a separate WS frame. See [protocols.md](./protocols.md#emotion-protocol).
-- Custom providers are mounted into the container via Docker volumes at `/opt/xiaozhi-esp32-server/core/providers/{asr,tts,llm}/…`. They override the baked-in files at module-import time.
+- Custom providers are copied into the image by the root Dockerfile at `/opt/xiaozhi-esp32-server/core/providers/{asr,tts,llm}/…`.
 - **Lots of upstream features are unused** — voiceprint speaker-ID, VLLM vision, knowledge-base RAG, PowerMem, multi-user routing. See [latent-capabilities.md](./latent-capabilities.md#voice-pipeline-unused).
 
 ## Provider catalog (upstream)
@@ -71,7 +71,7 @@ Pick one via `selected_module.LLM` in `.config.yaml`. The default is `PiVoiceLLM
 
 #### `PiVoiceLLM` (default)
 
-Custom provider at `custom-providers/pi_voice/` (mounted into `/opt/xiaozhi-esp32-server/core/providers/llm/pi_voice/`). It doesn't run a model itself — it hands each voice turn to the **`dotty-pi` container** by running `docker exec -i dotty-pi pi --mode rpc` and exchanging JSONL messages over stdio. The pi agent owns the conversation loop (`qwen3.5:4b` on local llama-swap) and the five `dotty-pi-ext` voice tools (`memory_lookup`, `remember`, `think_hard`, `take_photo`, `play_song`); only TTS-bound text streams back. See [brain.md](./brain.md).
+Custom provider at `custom-providers/pi_voice/`, baked into `/opt/xiaozhi-esp32-server/core/providers/llm/pi_voice/`. It doesn't run a model itself; it hands each voice turn to the **`dotty-pi` container** over HTTP RPC. The pi agent owns the conversation loop (`DOTTY_PI_MODEL`, default `dotty-simple`) and the seven `dotty-pi-ext` voice tools (`memory_lookup`, `remember`, `recall_person`, `remember_person`, `think_hard`, `take_photo`, `play_song`); only TTS-bound text streams back. See [brain.md](./brain.md).
 
 #### `OpenAICompat` (alternate)
 
@@ -109,7 +109,7 @@ xiaozhi-server discovers providers by module path. `selected_module.TTS: LocalPi
 1. The provider-directory convention hasn't changed.
 2. The provider base-class signature hasn't changed.
 
-Both of those do occasionally break on upstream major bumps. Pin the image tag in `docker-compose.yml` and test an upgrade on a branch before merging.
+Both of those do occasionally break on upstream major bumps. Pin the image tag in `compose.yml` and test an upgrade on a branch before merging.
 
 ## Emotion handling inside the pipeline
 

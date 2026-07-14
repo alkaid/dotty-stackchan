@@ -2,12 +2,11 @@
 // Unraid-resident behaviour daemon (the bridge.py successor; see
 // ../../dotty-behaviour/README.md).
 //
-// Default URL is localhost:8090 because both dotty-pi and
-// dotty-behaviour run on the Unraid host networked together. Override
-// via DOTTY_BEHAVIOUR_URL for dev/test.
+// Production uses the Compose service name. Override via
+// DOTTY_BEHAVIOUR_URL for dev/test.
 
 const DEFAULT_URL =
-  process.env.DOTTY_BEHAVIOUR_URL ?? "http://127.0.0.1:8090";
+  process.env.DOTTY_BEHAVIOUR_URL ?? "http://dotty-behaviour:8090";
 const DEFAULT_TIMEOUT_MS = Number(
   process.env.DOTTY_BEHAVIOUR_TIMEOUT_MS ?? "3000",
 );

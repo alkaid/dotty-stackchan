@@ -11,7 +11,7 @@ One-page reference for every cross-layer signal in the Dotty stack.
 
 1. **StackChan firmware** -- ESP32-S3 (m5stack/StackChan). The physical robot.
 2. **xiaozhi-esp32-server** -- Docker on a Linux host. Voice I/O pipeline (ASR, TTS, VAD, emotion parsing).
-3. **dotty-pi** -- the pi coding agent (Docker container on the same host). The LLM brain; reached by xiaozhi-server's `PiVoiceLLM` provider via `docker exec` pi RPC. (Ambient perception runs in a sibling `dotty-behaviour` container — see [architecture.md](./architecture.md).)
+3. **dotty-pi** -- the pi coding agent (Docker container on the same host). The LLM brain; reached by xiaozhi-server's `PiVoiceLLM` provider over HTTP RPC. (Ambient perception runs in a sibling `dotty-behaviour` container — see [architecture.md](./architecture.md).)
 
 ---
 
@@ -29,8 +29,8 @@ One-page reference for every cross-layer signal in the Dotty stack.
 
 | Signal | Source | Destination | Protocol | Notes |
 |---|---|---|---|---|
-| LLM request | xiaozhi (PiVoiceLLM provider) | dotty-pi | `docker exec` pi RPC (JSONL over stdio) | Carries the user text; pi runs the agent loop and tools inside the container |
-| LLM response | dotty-pi | xiaozhi | JSONL text chunks over stdio | Only TTS-bound text streams back; tool dispatch stays inside the agent |
+| LLM request | xiaozhi (PiVoiceLLM provider) | dotty-pi | HTTP RPC on `dotty-pi:8091` | Carries the user text; pi runs the agent loop and tools inside the container |
+| LLM response | dotty-pi | xiaozhi | HTTP text stream | Only TTS-bound text streams back; tool dispatch stays inside the agent |
 | Sentence chunks | xiaozhi | TTS then StackChan | Internal then WebSocket Opus | xiaozhi splits response into sentences, synthesizes each, streams audio back |
 
 ## Emotion & Expression

@@ -10,7 +10,7 @@ description: Xiaozhi WebSocket protocol, pi RPC transport, emotion frame format,
 - **Xiaozhi WebSocket protocol** — between device and xiaozhi-server. Opus audio + JSON control frames. Supports MCP over JSON-RPC 2.0 in-band. Canonical spec: `github.com/78/xiaozhi-esp32/blob/main/docs/websocket.md`.
 - **Emotion channel** — 21 upstream emotion identifiers; the server picks one from the LLM's leading emoji and emits a separate `llm`-type frame. This stack uses a 9-emoji subset.
 - **MCP over WS** — the device acts as an MCP server; xiaozhi-server calls `tools/list` and `tools/call` against it. Tool names use dotted namespaces like `self.audio_speaker.set_volume`.
-- **pi RPC** — `PiClient` ↔ the dotty-pi agent communicate as JSONL messages over the stdin/stdout of `docker exec -i dotty-pi pi --mode rpc`. This is the voice transport for the default `PiVoiceLLM` provider.
+- **pi RPC** — `PiVoiceLLM` calls the dotty-pi HTTP RPC wrapper on the Compose network. The wrapper owns pi JSONL RPC internally.
 - **HTTP APIs** — split across two services: dotty-behaviour (:8090) serves perception, vision, audio, and calendar endpoints; bridge.py (:8081) serves the admin dashboard `/ui` and admin routes.
 
 ## Xiaozhi WebSocket
@@ -232,21 +232,25 @@ See [hardware.md](./hardware.md#on-device-mcp-tools) for the default 11-tool MCP
 <a id="pi-rpc"></a>
 ## pi RPC — PiVoiceLLM transport
 
-The `PiVoiceLLM` provider communicates with the dotty-pi agent via **pi RPC mode**: JSONL messages exchanged over the stdin/stdout of a `docker exec` invocation.
+The `PiVoiceLLM` provider communicates with the dotty-pi agent through the HTTP RPC wrapper exposed on `dotty-pi:8091`. The wrapper keeps one `pi --mode rpc` process alive inside the dotty-pi container and translates HTTP turns to pi JSONL frames.
 
 ```
 xiaozhi-server
-  └─ PiClient
-       └─ docker exec -i dotty-pi pi --mode rpc …
-                             │           ▲
-                    JSONL request        │
-                    (stdin)              │ JSONL response
-                                        │ (stdout, streamed)
+  └─ PiVoiceLLM / PiHttpClient
+       └─ POST http://dotty-pi:8091/turn
+                              │          ▲
+                         HTTP text       │
+                         stream          │
+                              ▼          │
+                         pi JSONL RPC inside dotty-pi
 ```
 
-Each turn is a single JSONL object written to stdin; the agent streams JSONL response chunks back on stdout. Only TTS-bound text chunks are forwarded to xiaozhi-server — tool call details stay internal to the agent loop. The agent exits cleanly after each turn; `PiClient` re-invokes `docker exec` for the next turn.
+Each turn is a single HTTP request. Only TTS-bound text chunks are forwarded to xiaozhi-server; tool call details stay internal to the agent loop. Between turns, `PiVoiceLLM` calls `/new_session` to clear pi state without restarting the process.
 
-The dotty-pi agent loads the **dotty-pi-ext extension** at startup, which registers the five voice tools (`memory_lookup`, `remember`, `think_hard`, `take_photo`, `play_song`). Tool results never appear in the TTS stream.
+The dotty-pi agent loads the **dotty-pi-ext extension** at startup, which
+registers seven voice tools (`memory_lookup`, `remember`, `recall_person`,
+`remember_person`, `think_hard`, `take_photo`, `play_song`). Tool results never
+appear directly in the TTS stream.
 
 <a id="http-apis"></a>
 ## HTTP APIs

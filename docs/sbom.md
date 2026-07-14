@@ -17,7 +17,7 @@ For Dotty specifically, "every component" spans three very different worlds:
 1. **Server-side Python** — the FastAPI bridge, custom xiaozhi providers,
    pinned in `bridge/requirements.txt`.
 2. **Container images** — the `xiaozhi-esp32-server` image (and any sidecars)
-   referenced from `docker-compose.yml`, ideally pinned by `@sha256:...`
+   referenced from `compose.yml`, ideally pinned by `@sha256:...`
    digest for reproducibility.
 3. **Firmware components** — every Espressif/community ESP-IDF managed
    component pulled in by the StackChan firmware build.
@@ -120,7 +120,7 @@ A snapshot from `main` at the time of writing:
 | Section    | Approx. count | Source                                     |
 |------------|--------------:|---------------------------------------------|
 | server     |           ~10 | `bridge/requirements.txt` + transitive deps |
-| containers |             1 | `docker-compose.yml`                        |
+| containers |             1 | `compose.yml`                               |
 | firmware   |          ~60+ | `firmware/firmware/managed_components/`     |
 
 ## License diversity

@@ -27,21 +27,12 @@ of which run comfortably on a modern multi-core x86-64 or Apple Silicon CPU.
 | Scenario | Needs a GPU? | Notes |
 |----------|--------------|-------|
 | **Default** (FunASR ASR + LocalPiper TTS + a **cloud** LLM via OpenRouter/OpenAI-compatible key) | No | Any 64-bit Linux/macOS host with Docker and ~4 GB free RAM. This is the Quickstart happy path. |
-| `WhisperLocal` ASR instead of FunASR | Yes | `faster-whisper` float16 needs CUDA. This is the *only* reason the Quickstart compose file carries a `runtime: nvidia` block. |
+| `WhisperLocal` ASR instead of FunASR | Yes | `faster-whisper` float16 needs CUDA. Set the ASR and NVIDIA runtime variables shown in [deployment.md](deployment.md#asr-配置). |
 | **Self-hosting the LLM** locally (Ollama / llama-swap instead of a cloud key) | Recommended | VRAM scales with the model — roughly ~5 GB for an 8B model, ~18 GB for a 30B. See [run-fully-local.md](cookbook/run-fully-local.md) and [llama-swap-concurrent-models.md](cookbook/llama-swap-concurrent-models.md). CPU-only inference works but is slow. |
 
-**You do not have to touch the GPU config manually.** `make setup` (step 4)
-auto-detects the NVIDIA Docker runtime: if it's present, setup selects
-`WhisperLocal` on the GPU; if it's absent, setup selects `FunASR` on the CPU
-**and strips the `runtime: nvidia` / `NVIDIA_*` blocks** out of the rendered
-`docker-compose.yml`. The `# --- BEGIN/END CUDA BLOCK ---` markers in
-`docker-compose.yml.template` exist for exactly this.
-
-> If you render the compose file by hand instead of running `make setup`,
-> delete the two marked sections (`# --- BEGIN CUDA BLOCK ---` … `# --- END
-> CUDA BLOCK ---` and `# --- BEGIN CUDA ENV ---` … `# --- END CUDA ENV ---`)
-> on a host without `nvidia-container-toolkit`. Leaving them in is what
-> produces the `could not select device driver "nvidia"` error from Docker.
+`make setup` reads `.env`, renders `data/.config.yaml`, downloads model
+weights, and builds the tracked `compose.yml`. There is no interactive wizard.
+The portable default is `FunASR/cpu/int8`; GPU ASR is an explicit `.env` choice.
 
 ## 1. Flash the firmware
 
@@ -87,18 +78,20 @@ cd dotty-stackchan
 cp .env.example .env
 ```
 
-Edit `.env` and set `OPENROUTER_API_KEY=<YOUR_API_KEY>` (or any
-OpenAI-compatible key). You can skip this if you're running fully local
-— either via Ollama (single binary, simple) or via llama-swap (Docker,
-supports multiple resident models). See
+Edit `.env` and set the required public endpoint, admin-token, and sub2api
+values: `XIAOZHI_PUBLIC_WS_BASE_URL`, `XIAOZHI_PUBLIC_OTA_BASE_URL`,
+`DOTTY_ADMIN_TOKEN`, `DOTTY_PI_BASE_URL`, `DOTTY_PI_API_KEY`,
+`DOTTY_PI_MODEL`, and `VOICE_THINKER_MODEL`.
+You can skip the cloud key only if you're running fully local — either
+via Ollama (single binary, simple) or via llama-swap (Docker, supports
+multiple resident models). See
 [cookbook/run-fully-local.md](cookbook/run-fully-local.md) and
 [cookbook/llama-swap-concurrent-models.md](cookbook/llama-swap-concurrent-models.md).
 
-The shipped `.config.yaml` selects `PiVoiceLLM` as the default LLM
-provider, which runs the `dotty-pi` container (the pi coding agent)
-on the same Docker host. One alternate provider — `OpenAICompat`
-(any OpenAI-compatible cloud or local endpoint) — is available via
-`selected_module.LLM` in `data/.config.yaml`.
+The rendered `data/.config.yaml` selects `PiVoiceLLM` as the default
+LLM provider, which runs the `dotty-pi` container on the same Docker
+host. One alternate provider, `OpenAICompat`, is available via
+`selected_module.LLM` if you intentionally switch away from dotty-pi.
 
 ## 4. Run setup
 
@@ -106,10 +99,10 @@ on the same Docker host. One alternate provider — `OpenAICompat`
 make setup
 ```
 
-The interactive wizard prompts for your server IP, robot name, timezone,
-and LLM provider. It downloads the ASR and TTS models (~100 MB),
-substitutes placeholders in config files, and starts the Docker
-containers.
+`make setup` validates `.env`, checks the selected container runtime,
+downloads the ASR and TTS models, renders `data/.config.yaml`, and builds and
+starts the containers. If a required value is missing or still contains a
+placeholder, setup stops before starting anything.
 
 Verify everything is healthy:
 
@@ -122,20 +115,12 @@ All checks should pass (green). If any fail, see
 
 ## 5. Bring up the containers
 
-All four server-side services run as Docker containers on the same host.
-`docker compose up -d` (from `docker-compose.yml.template` after `make
-setup` substitutes your placeholders) starts the main `xiaozhi-esp32-server`
-container. The brain container and the perception/dashboard container
-are brought up separately:
+`make setup` already starts all four server-side services. For later
+restarts or updates, use the root compose file:
 
-- **dotty-pi** (the voice-tool brain): see [dotty-pi/README.md](../dotty-pi/README.md)
-  for build and run instructions.
-- **dotty-behaviour** (perception bus + admin dashboard): see
-  [dotty-behaviour/README.md](../dotty-behaviour/README.md) for build and
-  run instructions. The `scripts/deploy-behaviour.sh` helper deploys it.
-- **bridge.py** (admin dashboard service, `:8081`): runs as a container
-  on the same host (`bridge/Dockerfile` + `bridge/docker-compose.yml`,
-  deployed via `scripts/deploy-bridge-unraid.sh`).
+```bash
+docker compose up -d --build
+```
 
 No separate host, no systemd bridge unit, no SSH to a second machine.
 
@@ -143,7 +128,7 @@ No separate host, no systemd bridge unit, no SSH to a second machine.
 
 1. Power on the robot (USB-C or battery).
 2. On the device screen, navigate to **Settings > Advanced Options**.
-3. Enter the OTA URL: `http://<XIAOZHI_HOST>:8003/xiaozhi/ota/`
+3. Enter the OTA URL: `<XIAOZHI_PUBLIC_OTA_BASE_URL>/xiaozhi/ota/`
 4. The robot connects via WebSocket and shows a face.
 
 ## 7. First voice turn
@@ -175,50 +160,53 @@ latency is roughly 5 seconds, dominated by the LLM round-trip.
 
 ## Placeholders
 
-This repo uses placeholders in place of real IPs, usernames, and filesystem paths. Substitute these everywhere before deploying:
+This repo uses placeholders in place of real IPs, secrets, model ids, and filesystem paths. Put deployment values in `.env` before running `make setup`:
 
 | Placeholder | Meaning |
 |---|---|
-| `<XIAOZHI_HOST>` | LAN IP of the server running all Docker containers. The robot reaches this on WiFi, so it must be a LAN IP, not a Tailscale/VPN IP. |
+| `<XIAOZHI_PUBLIC_WS_BASE_URL>` | Client-visible WebSocket origin including `ws://` or `wss://`, host, and optional port; no path. |
+| `<XIAOZHI_PUBLIC_OTA_BASE_URL>` | Client-visible OTA origin including `http://` or `https://`, host, and optional port; no path. |
+| `<DEPLOY_HOST>` | LAN IP or DNS name of the Docker host, used for SSH, dashboard access, and host-side diagnostics. |
 | `<XIAOZHI_USER>` | SSH user for the server (whatever your distro defaults to: `root`, `ubuntu`, `dietpi`, etc.). |
-| `<XIAOZHI_HOSTNAME>` | Hostname or Tailscale name of the server (optional, IP works for everything). |
+| `<DEPLOY_HOSTNAME>` | Hostname or Tailscale name of the server (optional, IP works for everything). |
 | `<XIAOZHI_PATH>` | Path on the server where you clone/install this repo (e.g. `/opt/xiaozhi-server/` or `/srv/xiaozhi-server/`). |
-| `<YOUR_NAME>` | Your name / org, used in the persona prompt in `.config.yaml`. |
-| `<ROBOT_NAME>` | Name the robot introduces itself as, referenced in the persona prompt in `.config.yaml`. Any string — pick whatever you want. The default example uses the hardware name ("StackChan"). |
+| `<YOUR_NAME>` | Your name / org, used in the persona prompt rendered to `data/.config.yaml`. |
+| `<ROBOT_NAME>` | Name the robot introduces itself as, rendered to `data/.config.yaml`. |
 
-Port numbers (`8000`, `8003`, `8081`, `8090`) are product-generic and should not be changed unless you also reconfigure the respective services.
+Container ports `8000/8003` stay fixed. Published Compose ports may differ,
+and public endpoints may point at a gateway instead of those published ports.
 
 Files you will definitely need to edit before first run:
 
-- `.config.yaml` — replace `<XIAOZHI_HOST>` and customise the `prompt:` block.
-- `docker-compose.yml` — set `TZ` to your timezone.
+- `.env` — set public endpoint bases, published ports, admin token, sub2api URL/key, and model ids.
+- `.config.yaml.template` — optional only if you want to customise the rendered persona prompt.
 
 ---
 
 ## Deployment layout
 
-All four containers run on the single Docker host (`<XIAOZHI_HOST>`):
+All four containers run on the single Docker host (`<DEPLOY_HOST>`):
 
 | Container | Purpose | Port |
 |---|---|---|
 | `xiaozhi-esp32-server` | Voice pipeline: ASR, TTS, WebSocket to StackChan | 8000 (WS), 8003 (OTA/HTTP) |
-| `dotty-pi` | pi coding agent — the voice-tool brain | internal (via `docker exec`) |
+| `dotty-pi` | pi coding agent, the voice-tool brain | internal `8091`, host-local `127.0.0.1:8091` |
 | `dotty-behaviour` | Perception bus + ambient consumers + calendar | 8090 |
-| `bridge.py` | Admin dashboard | 8081 |
+| `dotty-bridge` | Admin dashboard (`bridge.py`) | 8081 |
 
-Container volume mounts for `xiaozhi-esp32-server`:
+Runtime mounts for `xiaozhi-esp32-server`:
 
 | Host path | Container path | Purpose |
 |---|---|---|
 | `data/.config.yaml` | `/opt/xiaozhi-esp32-server/data/.config.yaml` | Config override (read-only mount) |
 | `models/SenseVoiceSmall/` | `/opt/xiaozhi-esp32-server/models/SenseVoiceSmall/` | ASR weights |
 | `models/piper/` | `/opt/xiaozhi-esp32-server/models/piper/` | Piper TTS voice models (`.onnx` + `.json`) |
+| `models/whisper-small.en-ct2/` | `/opt/xiaozhi-esp32-server/models/whisper-small.en-ct2/` | Optional Whisper ASR weights |
+| `data/bin/` | `/opt/xiaozhi-esp32-server/data/bin/` | OTA firmware files |
 | `tmp/` | `/opt/xiaozhi-esp32-server/tmp/` | Scratch |
-| `custom-providers/pi_voice/` | `/opt/xiaozhi-esp32-server/core/providers/llm/pi_voice/` | PiVoiceLLM provider (directory mount) |
-| `custom-providers/openai_compat/` | `/opt/xiaozhi-esp32-server/core/providers/llm/openai_compat/` | OpenAICompat alternate provider |
-| `custom-providers/edge_stream/edge_stream.py` | `/opt/xiaozhi-esp32-server/core/providers/tts/edge_stream.py` | Streaming EdgeTTS provider (file mount) |
-| `custom-providers/piper_local/piper_local.py` | `/opt/xiaozhi-esp32-server/core/providers/tts/piper_local.py` | Local Piper TTS provider (file mount) |
-| `custom-providers/asr/fun_local.py` | `/opt/xiaozhi-esp32-server/core/providers/asr/fun_local.py` | Patched FunASR — adds `language` config key so SenseVoiceSmall can be pinned to English |
+
+Custom providers, xiaozhi patches, personas, and built-in assets are copied
+into the image by the root Dockerfile and are not mounted from the checkout.
 
 The full file inventory lives in [architecture.md](./architecture.md#deployment-files-this-repo).
 
@@ -228,21 +216,19 @@ The full file inventory lives in [architecture.md](./architecture.md#deployment-
 
 | What | URL | Who calls it |
 |---|---|---|
-| OTA (enter into StackChan settings) | `http://<XIAOZHI_HOST>:8003/xiaozhi/ota/` | The robot on boot |
-| WebSocket | `ws://<XIAOZHI_HOST>:8000/xiaozhi/v1/` | The robot after OTA handshake |
-| Perception / ambient events | `http://<XIAOZHI_HOST>:8090` | xiaozhi-server → dotty-behaviour |
-| Admin dashboard | `http://<XIAOZHI_HOST>:8081/ui` | Humans (LAN-only HTMX UI) |
-| Bridge health | `http://<XIAOZHI_HOST>:8081/health` | Humans, monitoring |
+| OTA (enter into StackChan settings) | `<XIAOZHI_PUBLIC_OTA_BASE_URL>/xiaozhi/ota/` | The robot on boot |
+| WebSocket | `<XIAOZHI_PUBLIC_WS_BASE_URL>/xiaozhi/v1/` | The robot after OTA handshake |
+| Perception / ambient events | `http://dotty-behaviour:8090` | Internal Compose DNS |
+| Admin dashboard | `http://<DEPLOY_HOST>:8081/ui` | Humans (LAN-only HTMX UI) |
+| Bridge health | `http://<DEPLOY_HOST>:8081/health` | Humans, monitoring |
 
 ---
 
 ## Reboot survival
 
 All containers use `restart: unless-stopped`. Ensure dockerd starts at
-boot on your distro. Use `docker compose restart` or
-`docker restart <container>` for transient restarts rather than `docker
-compose down` (which marks the container stopped and prevents
-auto-restart on reboot).
+boot on your distro. Use `docker compose restart <service>` for transient
+restarts rather than `docker compose down`.
 
 ---
 
@@ -250,35 +236,42 @@ auto-restart on reboot).
 
 ```bash
 # Tail xiaozhi-server logs (voice pipeline)
-ssh <XIAOZHI_USER>@<XIAOZHI_HOST> 'docker logs -f xiaozhi-esp32-server'
+ssh <XIAOZHI_USER>@<DEPLOY_HOST> 'cd <XIAOZHI_PATH> && docker compose logs -f xiaozhi-esp32-server'
 
 # Tail dotty-behaviour logs (perception + dashboard)
-ssh <XIAOZHI_USER>@<XIAOZHI_HOST> 'docker logs -f dotty-behaviour'
+ssh <XIAOZHI_USER>@<DEPLOY_HOST> 'cd <XIAOZHI_PATH> && docker compose logs -f dotty-behaviour'
 
 # Tail dotty-pi logs (brain container)
-ssh <XIAOZHI_USER>@<XIAOZHI_HOST> 'docker logs -f dotty-pi'
+ssh <XIAOZHI_USER>@<DEPLOY_HOST> 'cd <XIAOZHI_PATH> && docker compose logs -f dotty-pi'
 
 # Restart voice pipeline after config change
-ssh <XIAOZHI_USER>@<XIAOZHI_HOST> 'cd <XIAOZHI_PATH> && docker compose restart'
+ssh <XIAOZHI_USER>@<DEPLOY_HOST> 'cd <XIAOZHI_PATH> && docker compose restart xiaozhi-esp32-server'
 
 # Admin dashboard
-open http://<XIAOZHI_HOST>:8081/ui
+open http://<DEPLOY_HOST>:8081/ui
 
 # Bridge health
-curl http://<XIAOZHI_HOST>:8081/health
+curl http://<DEPLOY_HOST>:8081/health
 ```
 
 ### Changing voice
 The default TTS is `LocalPiper` (offline, runs inside the container). To change the Piper voice, edit `TTS.LocalPiper.voice` and the corresponding `model_path` / `config_path` in `data/.config.yaml`. To switch to cloud EdgeTTS instead, set `selected_module.TTS: EdgeTTS` and edit `TTS.EdgeTTS.voice` (any Microsoft Edge Neural voice ID works, e.g. `en-US-AvaNeural`). Restart the container after changes.
 
 ### Changing persona (the robot's personality)
-Edit `personas/dotty_voice.md` (loaded by the pi agent on the `PiVoiceLLM` path) and restart the relevant container. The `prompt:` key in `data/.config.yaml` is also injected as a secondary system message. Full instructions: [cookbook/change-persona.md](cookbook/change-persona.md).
+Edit `personas/dotty_voice.md`, then rebuild `dotty-pi` because persona files
+are image content: `docker compose up -d --build dotty-pi`. The `prompt:` key
+in `data/.config.yaml` remains the generic-provider prompt. Full instructions:
+[cookbook/change-persona.md](cookbook/change-persona.md).
 
 ### Changing VAD sensitivity
 `VAD.SileroVAD.min_silence_duration_ms` in `data/.config.yaml`. Default: 700 ms. Lower = cuts off quicker. Higher = waits longer for slow speakers.
 
 ### Changing the LLM model
-For the `PiVoiceLLM` path (default): see [dotty-pi/README.md](../dotty-pi/README.md) for the model selection rules — in particular, the llama-swap matrix DSL constraint that prevents the voice-model set from being evicted. For the `OpenAICompat` path: edit `LLM.OpenAICompat.model` (or repoint `url` / `api_key`) in `data/.config.yaml` and `docker compose restart`. Note: there is no live in-flight model-swap on either path — smart-mode model-swap is v2 scope and not wired (the instant hot-swap once provided by the removed Tier1Slim provider is gone).
+For the default `PiVoiceLLM` path, set `DOTTY_PI_MODEL` for normal turns and
+`VOICE_THINKER_MODEL` for `think_hard` in `.env`, then run
+`docker compose up -d dotty-pi`. For `OpenAICompat`, edit its model, URL, or
+API key in `data/.config.yaml`, then restart `xiaozhi-esp32-server`. Smart mode
+does not swap either backend model.
 
 ---
 
@@ -287,7 +280,7 @@ For the `PiVoiceLLM` path (default): see [dotty-pi/README.md](../dotty-pi/README
 ```bash
 make doctor          # health checks
 make logs            # tail server logs
-curl http://<XIAOZHI_HOST>:8081/health   # test the bridge/dashboard
+curl http://<DEPLOY_HOST>:8081/health   # test the bridge/dashboard
 ```
 
 See [troubleshooting.md](troubleshooting.md) for common issues.

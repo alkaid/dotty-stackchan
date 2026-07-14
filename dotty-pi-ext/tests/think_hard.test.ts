@@ -3,8 +3,8 @@
 // Split into three groups:
 //   1. Request-body shape vs Python oracle (deterministic).
 //   2. Wrapper behaviour with mocked fetch (success / timeout / error).
-//   3. Optional live smoke test against llama-swap, gated by
-//      DOTTY_LLAMA_SWAP_URL.
+//   3. Optional live smoke test against an OpenAI-compatible thinker,
+//      gated by DOTTY_THINKER_URL.
 
 import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -59,11 +59,13 @@ interface FetchMock {
   status?: number;
   json?: unknown;
   throws?: Error;
+  calls?: Array<{ url: string; init: RequestInit }>;
 }
 
 function installFetchMock(mock: FetchMock): () => void {
   const original = globalThis.fetch;
-  globalThis.fetch = (async (_url: any, _init: any) => {
+  globalThis.fetch = (async (url: any, init: any) => {
+    mock.calls?.push({ url: String(url), init: init as RequestInit });
     if (mock.throws) throw mock.throws;
     return {
       ok: (mock.status ?? 200) >= 200 && (mock.status ?? 200) < 300,
@@ -88,14 +90,107 @@ async function testEmptyInput(): Promise<void> {
 
 async function testSuccess(): Promise<void> {
   process.stdout.write("\nSuccess path:\n");
+  const calls: Array<{ url: string; init: RequestInit }> = [];
   const restore = installFetchMock({
     json: { choices: [{ message: { content: "  Pong.  " } }] },
+    calls,
   });
   try {
-    const got = await runThinkHard("What is the answer?");
+    const got = await runThinkHard("What is the answer?", {
+      url: "https://sub2api.example.test/v1/chat/completions",
+      apiKey: "test-key",
+    });
     assertEq("trims whitespace", got, "Pong.");
+    assertEq("passes bearer token", calls[0].init.headers, {
+      "content-type": "application/json",
+      authorization: "Bearer test-key",
+    });
   } finally {
     restore();
+  }
+}
+
+async function testSub2ApiKeyFallback(): Promise<void> {
+  process.stdout.write("\nDOTTY_PI_API_KEY fallback:\n");
+  const originalVoiceKey = process.env.VOICE_THINKER_API_KEY;
+  const originalSub2ApiKey = process.env.DOTTY_PI_API_KEY;
+  process.env.VOICE_THINKER_API_KEY = "";
+  process.env.DOTTY_PI_API_KEY = "fallback-key";
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  const restore = installFetchMock({
+    json: { choices: [{ message: { content: "Ok." } }] },
+    calls,
+  });
+  try {
+    await runThinkHard("Q?", {
+      url: "https://sub2api.example.test/v1/chat/completions",
+    });
+    assertEq("falls back to DOTTY_PI_API_KEY", calls[0].init.headers, {
+      "content-type": "application/json",
+      authorization: "Bearer fallback-key",
+    });
+  } finally {
+    restore();
+    if (originalVoiceKey === undefined) {
+      delete process.env.VOICE_THINKER_API_KEY;
+    } else {
+      process.env.VOICE_THINKER_API_KEY = originalVoiceKey;
+    }
+    if (originalSub2ApiKey === undefined) {
+      delete process.env.DOTTY_PI_API_KEY;
+    } else {
+      process.env.DOTTY_PI_API_KEY = originalSub2ApiKey;
+    }
+  }
+}
+
+async function testBaseUrlFallback(): Promise<void> {
+  process.stdout.write("\nDOTTY_PI_BASE_URL fallback:\n");
+  const originalThinkerUrl = process.env.VOICE_THINKER_URL;
+  const originalBaseUrl = process.env.DOTTY_PI_BASE_URL;
+  process.env.VOICE_THINKER_URL = "";
+  process.env.DOTTY_PI_BASE_URL = "https://sub2api.example.test/v1/";
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  const restore = installFetchMock({
+    json: { choices: [{ message: { content: "Ok." } }] },
+    calls,
+  });
+  try {
+    await runThinkHard("Q?");
+    assertEq(
+      "derives chat-completions URL",
+      calls[0].url,
+      "https://sub2api.example.test/v1/chat/completions",
+    );
+  } finally {
+    restore();
+    if (originalThinkerUrl === undefined) delete process.env.VOICE_THINKER_URL;
+    else process.env.VOICE_THINKER_URL = originalThinkerUrl;
+    if (originalBaseUrl === undefined) delete process.env.DOTTY_PI_BASE_URL;
+    else process.env.DOTTY_PI_BASE_URL = originalBaseUrl;
+  }
+}
+
+function testReasoningOverrides(): void {
+  process.stdout.write("\nReasoning configuration:\n");
+  const originalReasoning = process.env.DOTTY_PI_THINK_REASONING;
+  const originalEffort = process.env.DOTTY_PI_THINK_REASONING_EFFORT;
+  const originalMaxTokens = process.env.DOTTY_PI_THINK_MAX_TOKENS;
+  process.env.DOTTY_PI_THINK_REASONING = "false";
+  process.env.DOTTY_PI_THINK_REASONING_EFFORT = "medium";
+  process.env.DOTTY_PI_THINK_MAX_TOKENS = "1234";
+  try {
+    const body = buildThinkRequest("Q?");
+    assertEq("enable_thinking", body.chat_template_kwargs, { enable_thinking: false });
+    assertEq("reasoning_effort", body.reasoning_effort, "medium");
+    assertEq("max_tokens", body.max_tokens, 1234);
+  } finally {
+    if (originalReasoning === undefined) delete process.env.DOTTY_PI_THINK_REASONING;
+    else process.env.DOTTY_PI_THINK_REASONING = originalReasoning;
+    if (originalEffort === undefined) delete process.env.DOTTY_PI_THINK_REASONING_EFFORT;
+    else process.env.DOTTY_PI_THINK_REASONING_EFFORT = originalEffort;
+    if (originalMaxTokens === undefined) delete process.env.DOTTY_PI_THINK_MAX_TOKENS;
+    else process.env.DOTTY_PI_THINK_MAX_TOKENS = originalMaxTokens;
   }
 }
 
@@ -153,10 +248,10 @@ async function testHttpError(): Promise<void> {
 // --- 3. Optional live smoke test ----------------------------------------
 
 async function testLiveSmoke(): Promise<void> {
-  const url = process.env.DOTTY_LLAMA_SWAP_URL;
+  const url = process.env.DOTTY_THINKER_URL;
   if (!url) {
     process.stdout.write(
-      "\nLive smoke: SKIPPED (set DOTTY_LLAMA_SWAP_URL=http://192.168.1.67:8080/v1/chat/completions to run).\n",
+      "\nLive smoke: SKIPPED (set DOTTY_THINKER_URL=https://DOTTY_PI_BASE_URL_PLACEHOLDER/v1/chat/completions to run).\n",
     );
     return;
   }
@@ -178,6 +273,9 @@ async function main(): Promise<void> {
   testRequestBodies();
   await testEmptyInput();
   await testSuccess();
+  await testSub2ApiKeyFallback();
+  await testBaseUrlFallback();
+  testReasoningOverrides();
   await testLongResponseCap();
   await testTimeout();
   await testGenericError();

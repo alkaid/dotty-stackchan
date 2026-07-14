@@ -22,7 +22,8 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
-from pi_client import PiClient, PiClientError  # noqa: E402
+import pi_client as pi_client_module  # noqa: E402
+from pi_client import PiClient, PiClientError, PiHttpClient  # noqa: E402
 
 
 class FakePopen:
@@ -292,6 +293,31 @@ class TestPromptShape(unittest.TestCase):
             self.assertEqual(prompts[0]["id"], "turn-1")
         finally:
             client.close()
+
+
+class TestDefaultPiArgs(unittest.TestCase):
+    def test_default_client_uses_http_rpc(self):
+        original = os.environ.pop("DOTTY_PI_URL", None)
+        try:
+            client = pi_client_module.make_default_pi_client()
+            self.assertIsInstance(client, PiHttpClient)
+            self.assertEqual(client._base_url, "http://dotty-pi:8091")
+        finally:
+            if original is not None:
+                os.environ["DOTTY_PI_URL"] = original
+
+    def test_default_client_uses_custom_http_url(self):
+        original = os.environ.get("DOTTY_PI_URL")
+        os.environ["DOTTY_PI_URL"] = "http://brain.internal:8091/"
+        try:
+            client = pi_client_module.make_default_pi_client()
+            self.assertIsInstance(client, PiHttpClient)
+            self.assertEqual(client._base_url, "http://brain.internal:8091")
+        finally:
+            if original is None:
+                os.environ.pop("DOTTY_PI_URL", None)
+            else:
+                os.environ["DOTTY_PI_URL"] = original
 
 
 class TestPromptRejection(unittest.TestCase):

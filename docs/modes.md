@@ -168,8 +168,8 @@ Both `kid_mode` and `smart_mode` are voice-untoggleable — they are guardian-co
 
 | Endpoint | Body | Effect | Where |
 |---|---|---|---|
-| `POST /admin/kid-mode` | `{"enabled": bool}` | Persists + hot-reloads kid-mode globals atomically via `_apply_kid_mode()`. No daemon restart. Also pushes the kid pip via xiaozhi `/xiaozhi/admin/set-toggle`. | bridge (localhost-only) |
-| `POST /admin/smart-mode` | `{"enabled": bool, "device_id": "<optional>"}` | Persists the toggle + pushes the smart pip. Model-swap is v2 scope (not wired on `PiVoiceLLM`). | bridge (localhost-only) |
+| `POST /admin/kid-mode` | `{"enabled": bool}` | Persists + hot-reloads kid-mode globals atomically via `_apply_kid_mode()`. No daemon restart. Also pushes the kid pip via xiaozhi `/xiaozhi/admin/set-toggle`. | bridge (`X-Admin-Token`) |
+| `POST /admin/smart-mode` | `{"enabled": bool, "device_id": "<optional>"}` | Persists the toggle + pushes the smart pip. Model-swap is v2 scope (not wired on `PiVoiceLLM`). | bridge (`X-Admin-Token`) |
 | `POST /xiaozhi/admin/set-state` | `{"state": "<idle\|talk\|story_time\|security\|sleep\|dance>", "device_id": "<optional>"}` | Dispatches MCP `self.robot.set_state` onto the device WS; firmware StateManager applies it. | xiaozhi-server |
 | `POST /xiaozhi/admin/set-toggle` | `{"name": "kid_mode\|smart_mode", "enabled": bool, "device_id": "<optional>"}` | Dispatches MCP `self.robot.set_toggle`; firmware StateManager updates the pip without disturbing the active state. | xiaozhi-server |
 | `POST /xiaozhi/admin/set-face-identified` | `{"device_id": "<optional>"}` | Lights the face-identified pixel green; refresh required every < `kFaceIdentifiedTimeoutMs` (4 s) to hold. | xiaozhi-server |

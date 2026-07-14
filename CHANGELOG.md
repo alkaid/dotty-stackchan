@@ -145,7 +145,7 @@ Originally written as a release entry, but never actually tagged. Retained here 
 - **Technical documentation suite (`docs/`)** — eight linked markdown files covering architecture, hardware, voice pipeline, brain, protocols, latent capabilities, and upstream references.
 - **Docker packaging for zeroclaw-bridge** — multi-stage Dockerfile (Rust builder to python:3.12-slim runtime), deploy-side compose file, and GitHub Actions workflow publishing multi-arch images (amd64 + arm64) to `ghcr.io/brettkinny/zeroclaw-bridge`.
 - **Dual deployment paths** — both bare-metal systemd and Docker deployment for the bridge, sharing the same `~/.zeroclaw/` state directory.
-- **Placeholder-based configuration** — all real IPs, usernames, and paths replaced with named placeholders (`<XIAOZHI_HOST>`, `<ZEROCLAW_HOST>`, `<ROBOT_NAME>`, etc.) for safe public sharing.
+- **Placeholder-based configuration** — all real IPs, usernames, and paths replaced with named placeholders (`<DEPLOY_HOST>`, `<ZEROCLAW_HOST>`, `<ROBOT_NAME>`, etc.) for safe public sharing.
 - **systemd unit (`zeroclaw-bridge.service`)** — bare-metal bridge deployment with `Restart=on-failure`.
 - **docker-compose.yml** — container definition for xiaozhi-esp32-server with volume mounts for all custom providers.
 

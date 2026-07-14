@@ -23,21 +23,69 @@ jobs:
           EOF
           yamllint \
             .config.yaml.template \
-            docker-compose.yml.template \
-            compose.all-in-one.yml \
-            compose.local.override.yml
+            compose.yml
 
   compose-validate:
     name: Compose Validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Validate docker-compose.yml.template
-        # Template still contains <TZ_VALUE> etc. — compose accepts them as
-        # string values; only schema correctness is checked here.
-        run: docker compose -f docker-compose.yml.template config > /dev/null
-      - name: Validate compose.all-in-one.yml
-        run: docker compose -f compose.all-in-one.yml config > /dev/null
+      - name: Validate compose.yml
+        run: docker compose config > /dev/null
+      - name: Check deployment config contract
+        run: |
+          compose_vars=$(mktemp)
+          example_vars=$(mktemp)
+          rg -o '\$\{[A-Z][A-Z0-9_]*' compose.yml | sed 's/^${//' | sort -u > "$compose_vars"
+          sed -n \
+            -e 's/^# *\([A-Z][A-Z0-9_]*\)=.*/\1/p' \
+            -e 's/^\([A-Z][A-Z0-9_]*\)=.*/\1/p' \
+            .env.example | sort -u > "$example_vars"
+          missing=$(comm -23 "$compose_vars" "$example_vars")
+          test -z "$missing" || {
+            echo "Compose variables missing from .env.example:"
+            echo "$missing"
+            exit 1
+          }
+
+          root=$(pwd)
+          bad_mounts=$(
+            docker compose config --format json |
+              jq -r '.services[].volumes[]? | select(.type == "bind") | .source' |
+              awk -v root="$root/" '
+                index($0, root) == 1 &&
+                index($0, root "data/") != 1 &&
+                index($0, root "models/") != 1 &&
+                $0 != root "tmp" { print }
+              '
+          )
+          test -z "$bad_mounts" || {
+            echo "Repository source bind mounts are not allowed:"
+            echo "$bad_mounts"
+            exit 1
+          }
+
+          compose_files=$(find . -path './.git' -prune -o \
+            \( -iname '*compose*.yml' -o -iname '*compose*.yaml' \) -print)
+          test "$compose_files" = "./compose.yml" || {
+            echo "Only the root compose.yml deployment file is allowed:"
+            echo "$compose_files"
+            exit 1
+          }
+
+          ! rg -n 'docker (exec|cp)\b' Makefile scripts || {
+            echo "Deployment helpers must not modify running containers."
+            exit 1
+          }
+
+          docker compose config --format json | jq -e '
+            (.services["xiaozhi-esp32-server"].environment.DOTTY_PI_URL == "http://dotty-pi:8091") and
+            (.services["dotty-pi"].environment.XIAOZHI_ADMIN_BASE_URL == "http://xiaozhi-esp32-server:8003") and
+            (.services["dotty-pi"].environment.DOTTY_BEHAVIOUR_URL == "http://dotty-behaviour:8090") and
+            (.services["dotty-behaviour"].environment.XIAOZHI_ADMIN_BASE_URL == "http://xiaozhi-esp32-server:8003") and
+            (.services["dotty-bridge"].environment.XIAOZHI_ADMIN_BASE_URL == "http://xiaozhi-esp32-server:8003") and
+            (.services["dotty-bridge"].environment.DOTTY_BEHAVIOUR_URL == "http://dotty-behaviour:8090")
+          ' > /dev/null
 
   config-parse:
     name: Config Parse
@@ -70,18 +118,8 @@ jobs:
       - name: Install test dependencies
         run: |
           pip install pytest pytest-cov
-          pip install \
-            'fastapi>=0.115,<1' \
-            'uvicorn[standard]>=0.34,<1' \
-            'pydantic>=2.9,<3' \
-            'jinja2>=3.1,<4' \
-            'python-multipart>=0.0.9,<1' \
-            'prometheus-client>=0.20,<1' \
-            'PyYAML>=6.0,<7' \
-            'numpy>=1.24,<3' \
-            'aiohttp>=3.9,<4' \
-            'requests>=2.31,<3' \
-            'httpx>=0.27,<1'
+          pip install -r bridge/requirements.txt -r dotty-behaviour/requirements.txt
+          pip install 'numpy>=1.24,<3' 'aiohttp>=3.9,<4' 'httpx>=0.27,<1'
       - name: Run bridge + pi_voice unit tests
         run: |
           pytest tests/ custom-providers/pi_voice/tests/ -v --tb=short \
@@ -111,6 +149,8 @@ jobs:
       - name: Run dotty-pi-ext tests
         working-directory: dotty-pi-ext
         run: npm test
+      - name: Run dotty-pi RPC server tests
+        run: node --test dotty-pi/tests/*.test.mjs
 
   docs-links:
     name: Docs Link Check

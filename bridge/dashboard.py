@@ -3,9 +3,9 @@
 Mounted at ``/ui`` on the bridge FastAPI app. Host status cards,
 conversation log tail, action endpoints, SSE turn stream.
 
-Host probes are env-driven so this stays generic in the public template:
-set ``XIAOZHI_HOST`` (and optionally ``WORKSTATION_HOST``) on the bridge
-service. Cards for unset hosts render as "unknown".
+Host probes use the internal xiaozhi admin URL on the Compose network.
+The public LAN host used by the robot is rendered into OTA config, not
+used for service-to-service calls.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ import requests
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
@@ -186,7 +187,7 @@ def _scene_synthesis_cache_snapshot() -> dict[str, dict]:
 # single dashboard entry point). Read the same env var bridge.py uses so
 # operators set it once.
 _DOTTY_BEHAVIOUR_URL = os.environ.get(
-    "DOTTY_BEHAVIOUR_URL", "http://localhost:8090"
+    "DOTTY_BEHAVIOUR_URL", "http://dotty-behaviour:8090"
 ).rstrip("/")
 
 
@@ -287,9 +288,13 @@ router = APIRouter(
     dependencies=[Depends(_verify_dashboard_auth)],
 )
 
-XIAOZHI_HOST = os.environ.get("XIAOZHI_HOST", "")
-XIAOZHI_OTA_PORT = int(os.environ.get("XIAOZHI_OTA_PORT", "8003"))
-XIAOZHI_WS_PORT = int(os.environ.get("XIAOZHI_WS_PORT", "8000"))
+XIAOZHI_ADMIN_BASE_URL = os.environ.get(
+    "XIAOZHI_ADMIN_BASE_URL", "http://xiaozhi-esp32-server:8003"
+).rstrip("/")
+_XIAOZHI_ADMIN_PARSED = urlparse(XIAOZHI_ADMIN_BASE_URL)
+XIAOZHI_INTERNAL_HOST = _XIAOZHI_ADMIN_PARSED.hostname or ""
+XIAOZHI_INTERNAL_HTTP_PORT = _XIAOZHI_ADMIN_PARSED.port or 8003
+XIAOZHI_INTERNAL_WS_PORT = int(os.environ.get("XIAOZHI_INTERNAL_WS_PORT", "8000"))
 _ADMIN_TOKEN = os.environ.get("DOTTY_ADMIN_TOKEN", "").strip()
 
 
@@ -441,9 +446,9 @@ _SONG_OK_EXT = {".opus", ".ogg", ".wav", ".mp3"}
 async def _xiaozhi_device_count() -> int | None:
     """Count active StackChan WS connections via the admin endpoint.
     Returns None if xiaozhi is unreachable."""
-    if not XIAOZHI_HOST:
+    if not XIAOZHI_ADMIN_BASE_URL:
         return None
-    url = f"http://{XIAOZHI_HOST}:{XIAOZHI_OTA_PORT}/xiaozhi/admin/devices"
+    url = f"{XIAOZHI_ADMIN_BASE_URL}/xiaozhi/admin/devices"
     import urllib.request
     def _fetch() -> int | None:
         try:
@@ -600,9 +605,9 @@ async def dance(request: Request) -> Any:
 async def _xiaozhi_list_songs() -> tuple[list[str], str | None]:
     """Fetch the song-file list from xiaozhi's admin endpoint. Returns
     (files, error). Error is None on success."""
-    if not XIAOZHI_HOST:
-        return [], "XIAOZHI_HOST not set"
-    url = f"http://{XIAOZHI_HOST}:{XIAOZHI_OTA_PORT}/xiaozhi/admin/songs"
+    if not XIAOZHI_ADMIN_BASE_URL:
+        return [], "XIAOZHI_ADMIN_BASE_URL not set"
+    url = f"{XIAOZHI_ADMIN_BASE_URL}/xiaozhi/admin/songs"
     import urllib.request
     def _fetch() -> tuple[list[str], str | None]:
         try:
@@ -638,13 +643,13 @@ async def play_song(request: Request, filename: str = Form(...)) -> Any:
             request, "say_result.html",
             {"ok": False, "error": "Invalid song filename."},
         )
-    if not XIAOZHI_HOST:
+    if not XIAOZHI_ADMIN_BASE_URL:
         return templates.TemplateResponse(
             request, "say_result.html",
-            {"ok": False, "error": "XIAOZHI_HOST not set"},
+            {"ok": False, "error": "XIAOZHI_ADMIN_BASE_URL not set"},
         )
     asset_path = f"{_SONGS_BASE_PATH}/{base}"
-    url = f"http://{XIAOZHI_HOST}:{XIAOZHI_OTA_PORT}/xiaozhi/admin/play-asset"
+    url = f"{XIAOZHI_ADMIN_BASE_URL}/xiaozhi/admin/play-asset"
     def _post() -> dict:
         try:
             r = requests.post(
@@ -1516,7 +1521,7 @@ async def version_chip(request: Request) -> Any:
     `systemctl restart zeroclaw-bridge` unit that does not exist in the
     container and git-pulled into the dead /root/zeroclaw-bridge install
     dir, so the buttons no-op'd while reporting success. Deploys now go
-    through scripts/deploy-bridge-unraid.sh (build + `compose up -d`); the
+    through scripts/deploy-stack.sh (build + `compose up -d`); the
     container restart policy (`restart: unless-stopped`) handles restarts.
     The chip is now a plain version label linking to the built commit.
     """
@@ -1676,8 +1681,8 @@ async def status_strip(request: Request, placement: str = "header") -> Any:
     if placement == "header":
         bridge_uptime = time.time() - _START_TIME
         xz_ota_ok, xz_ws_ok = await asyncio.gather(
-            _tcp_reachable(XIAOZHI_HOST, XIAOZHI_OTA_PORT),
-            _tcp_reachable(XIAOZHI_HOST, XIAOZHI_WS_PORT),
+            _tcp_reachable(XIAOZHI_INTERNAL_HOST, XIAOZHI_INTERNAL_HTTP_PORT),
+            _tcp_reachable(XIAOZHI_INTERNAL_HOST, XIAOZHI_INTERNAL_WS_PORT),
         )
         last_seen_ts = _stackchan_last_seen()
         if last_seen_ts is None:
@@ -1726,14 +1731,14 @@ async def status_strip(request: Request, placement: str = "header") -> Any:
                 sc_status = "ok"
                 sc_tip = "Dotty: online — perception active, no voice yet today"
 
-        if not XIAOZHI_HOST:
-            xz_status, xz_tip = "unknown", "unraid: XIAOZHI_HOST env not set"
+        if not XIAOZHI_INTERNAL_HOST:
+            xz_status, xz_tip = "unknown", "server: XIAOZHI_ADMIN_BASE_URL env not set"
         elif xz_ota_ok and xz_ws_ok:
-            xz_status, xz_tip = "ok", f"unraid: OTA :{XIAOZHI_OTA_PORT} + WS :{XIAOZHI_WS_PORT}"
+            xz_status, xz_tip = "ok", f"server: HTTP :{XIAOZHI_INTERNAL_HTTP_PORT} + WS :{XIAOZHI_INTERNAL_WS_PORT}"
         elif xz_ota_ok or xz_ws_ok:
-            xz_status, xz_tip = "warn", "unraid: partial reachability"
+            xz_status, xz_tip = "warn", "server: partial reachability"
         else:
-            xz_status, xz_tip = "bad", "unraid: no ports responding"
+            xz_status, xz_tip = "bad", "server: no ports responding"
 
         # Face status now lives in the dedicated Perception card (`/ui/perception`)
         # rather than the hardware-reachability strip — it's a software signal,
@@ -1815,7 +1820,7 @@ async def host_detail(request: Request, slug: str) -> Any:
         smart_on = bool(smart_getter()) if smart_getter else None
         active_llm = _host_detail_llm_label(smart_on)
         facts = [
-            ("Device",     "Raspberry Pi"),
+            ("Runtime",    "Docker container"),
             ("Status",     "online"),
             ("Version",    BRIDGE_VERSION),
             ("Uptime",     _humanize_age(time.time() - _START_TIME)),
@@ -1844,8 +1849,8 @@ async def host_detail(request: Request, slug: str) -> Any:
     elif slug == "server":
         title = "Server (xiaozhi-esp32-server)"
         ota_ok, ws_ok = await asyncio.gather(
-            _tcp_reachable(XIAOZHI_HOST, XIAOZHI_OTA_PORT),
-            _tcp_reachable(XIAOZHI_HOST, XIAOZHI_WS_PORT),
+            _tcp_reachable(XIAOZHI_INTERNAL_HOST, XIAOZHI_INTERNAL_HTTP_PORT),
+            _tcp_reachable(XIAOZHI_INTERNAL_HOST, XIAOZHI_INTERNAL_WS_PORT),
         )
         n = await _xiaozhi_device_count()
         # The LLM row is honest about whether a model swap actually
@@ -1864,9 +1869,9 @@ async def host_detail(request: Request, slug: str) -> Any:
         # query it instead of hardcoding. For now we surface the known
         # deployment values so the modal isn't blank.
         facts = [
-            ("Host",     XIAOZHI_HOST or "(unset)"),
-            ("OTA :%d" % XIAOZHI_OTA_PORT, "reachable" if ota_ok else "unreachable"),
-            ("WS :%d"  % XIAOZHI_WS_PORT,  "reachable" if ws_ok  else "unreachable"),
+            ("Admin URL", XIAOZHI_ADMIN_BASE_URL or "(unset)"),
+            ("HTTP :%d" % XIAOZHI_INTERNAL_HTTP_PORT, "reachable" if ota_ok else "unreachable"),
+            ("WS :%d"  % XIAOZHI_INTERNAL_WS_PORT,  "reachable" if ws_ok  else "unreachable"),
             ("Devices connected", "—" if n is None else f"{n}"),
             ("Voice channel", "active" if voice_active else "idle"),
             ("Current LLM", current_llm),
@@ -2144,5 +2149,3 @@ async def events_stream(request: Request) -> StreamingResponse:
             "X-Accel-Buffering": "no",
         },
     )
-
-

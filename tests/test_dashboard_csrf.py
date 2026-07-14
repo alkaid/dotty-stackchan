@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import hashlib
 import os
 import sys
 import tempfile
 import unittest
 from contextlib import asynccontextmanager
 from pathlib import Path
+from unittest.mock import patch
 
 
 # Same env redirects as test_bridge_routes.py — kid/smart-mode state dirs
@@ -128,7 +130,7 @@ class CSRFEnforcementTests(unittest.TestCase):
 
     def test_post_with_matching_header_accepted_by_middleware(self):
         # We only assert the middleware passes the request through to
-        # the handler — the handler itself may 503 because XIAOZHI_HOST
+        # the handler — the handler itself may 503 because xiaozhi admin
         # isn't configured in the test env. The point is: NOT 403.
         token = self._prime_token()
         r = self.client.post(
@@ -169,6 +171,9 @@ class CSRFExemptionTests(unittest.TestCase):
         )
         self.assertNotEqual(r.status_code, 403)
 
+    def test_admin_routes_use_admin_token_instead_of_csrf(self):
+        self.assertTrue(csrf_mod._is_exempt("/admin/kid-mode"))
+
 
 class CSRFKillSwitchTests(unittest.TestCase):
     """DOTTY_CSRF_ENFORCE=0 → log-only mode, requests pass through."""
@@ -207,6 +212,14 @@ class CSRFSigningUnitTests(unittest.TestCase):
 
     def test_unsign_rejects_bad_signature(self):
         self.assertIsNone(csrf_mod._unsign("raw.deadbeef"))
+
+    def test_admin_token_provides_stable_fallback_secret(self):
+        with patch.dict(
+            os.environ,
+            {"DOTTY_CSRF_SECRET": "", "DOTTY_ADMIN_TOKEN": "admin-secret"},
+        ):
+            expected = hashlib.sha256(b"dotty-csrf-v1\0admin-secret").digest()
+            self.assertEqual(csrf_mod._load_secret(), expected)
 
 
 if __name__ == "__main__":

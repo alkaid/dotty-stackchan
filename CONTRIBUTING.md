@@ -21,13 +21,13 @@ modifications — please open an issue first to discuss the approach.
 
 - **Validate Docker Compose config:**
   ```bash
-  docker compose -f docker-compose.yml config --quiet
+  docker compose config --quiet
   ```
   This catches YAML syntax errors and invalid keys before they hit a live
   deployment.
 
 - **Check for leaked placeholders or real values:**
-  - Files in this repo must use placeholders (`<XIAOZHI_HOST>`, `<XIAOZHI_USER>`,
+  - Files in this repo must use placeholders (`<DEPLOY_HOST>`, `<XIAOZHI_USER>`,
     `<ROBOT_NAME>`, etc.) everywhere a real IP, hostname, username, or filesystem
     path would appear. See the "Configuring for your environment" table in
     `README.md` for the full list.
@@ -46,11 +46,11 @@ Changes tend to fall into one of these areas:
 
 | Area | Files | Notes |
 |---|---|---|
-| **Voice pipeline (xiaozhi-server)** | `docker-compose.yml`, `.config.yaml`, custom providers (`pi_voice/`, `openai_compat/`, `edge_stream.py`, `fun_local.py`, `piper_local.py`) | These run inside the xiaozhi-server Docker container on the Docker host. |
+| **Voice pipeline (xiaozhi-server)** | `compose.yml`, `.config.yaml.template`, root `Dockerfile`, custom providers (`pi_voice/`, `openai_compat`, `edge_stream.py`, `fun_local.py`, `piper_local.py`) | Provider source is baked into the xiaozhi-server image, never mounted from the checkout. |
 | **Brain / behaviour** | `dotty-pi/`, `dotty-pi-ext/`, `dotty-behaviour/` | Docker containers on the same host as xiaozhi-server. `dotty-pi` is the pi agent (voice brain); `dotty-behaviour` is the perception/greeter service. |
 | **Admin dashboard** | `bridge.py`, `bridge/` | FastAPI service on port 8081, running as a container on the Docker host. |
 | **Documentation** | `README.md`, `SETUP.md`, `docs/`, `session-prompt.md` | Docs under `docs/` follow conventions listed in `docs/README.md` (TL;DR at top, tables over prose, freshness footer). |
-| **CI** | `.github/workflows/` | Currently just the bridge Docker image build. |
+| **CI** | `.github/workflows/` | Compose validation, lint, Python/Node tests, and documentation links. |
 
 ## Code style
 
@@ -67,7 +67,7 @@ This is the most important contribution guideline. The repo is designed to be
 forked and configured per-deployment. Every value that varies between
 deployments must use a placeholder:
 
-- `<XIAOZHI_HOST>`, `<XIAOZHI_USER>`, `<XIAOZHI_HOSTNAME>`, `<XIAOZHI_PATH>`
+- `<DEPLOY_HOST>`, `<XIAOZHI_USER>`, `<DEPLOY_HOSTNAME>`, `<XIAOZHI_PATH>`
 - `<UNRAID_HOST>`
 - `<YOUR_NAME>`, `<ROBOT_NAME>`
 

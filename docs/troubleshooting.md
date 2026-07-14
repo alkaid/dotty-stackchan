@@ -32,7 +32,7 @@ Symptom-first lookup table covering common and obscure failure modes. Pair with 
 **Fix:**
 1. Confirm the per-turn sandwich enforcement is active on the live `PiVoiceLLM` path. Static system prompts alone are not enough — every turn is wrapped with an explicit English+emoji suffix. This is `build_turn_suffix()` in `custom-providers/textUtils.py`, applied by `custom-providers/pi_voice/pi_voice.py` (`_wrap_with_sandwich`). (The old `bridge.py::_build_sandwich_prompt` was part of the retired ZeroClaw bridge and no longer exists — the bridge is not in the voice path.)
 2. Confirm the persona prompt reinforces English-only: check `personas/dotty_voice.md` (loaded by the `dotty-pi` agent) and the top-level `prompt:` block in `data/.config.yaml`.
-3. Watch the actual voice path while testing — tail the `dotty-pi` container logs (`docker logs -f dotty-pi`) and the xiaozhi-server logs, not the bridge.
+3. Watch the actual voice path while testing: `docker compose logs -f dotty-pi xiaozhi-esp32-server`.
 4. If the leak happens on the first turn, check the persona file (`personas/dotty_voice.md`) for any non-English text.
 5. As a last resort, the ASR may be mis-transcribing English as another language. Check the `ASR.FunASR.language` key in `data/.config.yaml` is set to `en` (not `auto`).
 
@@ -66,10 +66,10 @@ Symptom-first lookup table covering common and obscure failure modes. Pair with 
 **Symptom:** The robot boots and connects to WiFi, but never responds to voice. May show a face but no indication of listening.
 
 **Fix:**
-1. Check the bridge health endpoint: `curl http://<XIAOZHI_HOST>:8081/health`. If the bridge is down, restart it.
-2. Check xiaozhi-server logs: `docker logs -f xiaozhi-esp32-server` on the server. Look for connection attempts from the robot.
-3. Verify the robot's OTA URL hasn't changed. After a firmware update, re-enter the OTA URL (`http://<XIAOZHI_HOST>:8003/xiaozhi/ota/`) in the robot's Advanced Options if needed.
-4. Open the browser test page (`repo/main/xiaozhi-server/test/test_page.html`) and point it at `ws://<XIAOZHI_HOST>:8000/xiaozhi/v1/`. If the browser page works but the robot doesn't, it's a robot-side configuration issue.
+1. Check the bridge health endpoint: `curl http://<DEPLOY_HOST>:8081/health`. If the bridge is down, run `docker compose restart dotty-bridge`.
+2. Check xiaozhi-server logs: `docker compose logs -f xiaozhi-esp32-server` on the server. Look for connection attempts from the robot.
+3. Verify the robot's OTA URL hasn't changed. After a firmware update, re-enter `<XIAOZHI_PUBLIC_OTA_BASE_URL>/xiaozhi/ota/` in Advanced Options if needed.
+4. Open the browser test page (`repo/main/xiaozhi-server/test/test_page.html`) and point it at `<XIAOZHI_PUBLIC_WS_BASE_URL>/xiaozhi/v1/`. If the browser page works but the robot doesn't, it's a robot-side configuration issue.
 
 ---
 
@@ -77,16 +77,20 @@ Symptom-first lookup table covering common and obscure failure modes. Pair with 
 
 **Symptom:** The xiaozhi-server container starts but immediately fails with a Python `ModuleNotFoundError` in the logs.
 
-**Cause:** Custom providers are not mounted correctly into the container. The volume mounts in `docker-compose.yml` map host-side files into specific paths inside the container. If the host path is wrong, the file doesn't arrive and the import fails.
+**Cause:** The xiaozhi image is stale, a provider was omitted from the root
+Dockerfile, or an upstream image change moved the target package path. Runtime
+provider source is not bind-mounted.
 
 **Fix:**
-1. Check `docker logs xiaozhi-esp32-server` for the exact missing module name.
-2. Verify the volume mounts in `docker-compose.yml` match the expected paths. The custom providers must land at:
+1. Check `docker compose logs xiaozhi-esp32-server` for the exact missing module name.
+2. Verify the root Dockerfile copies the provider to the expected path:
    - `custom-providers/pi_voice/` -> `/opt/xiaozhi-esp32-server/core/providers/llm/pi_voice/`
    - `custom-providers/edge_stream/` -> `/opt/xiaozhi-esp32-server/core/providers/tts/edge_stream/`
    - `custom-providers/asr/fun_local.py` -> `/opt/xiaozhi-esp32-server/core/providers/asr/fun_local.py`
-3. If the missing module is a Python dependency (e.g., `pydub`, `edge-tts`), it may not be in the base image. Add it via the compose file's environment or bake a custom image layer.
-4. After fixing mounts, restart the container: `docker compose restart` (not `docker compose down` + `up`, which marks the container as stopped and changes reboot behavior).
+3. If the missing module is a Python dependency, add it to the Dockerfile's
+   build-time install step.
+4. Rebuild and recreate the service:
+   `docker compose up -d --build xiaozhi-esp32-server`.
 
 ---
 
@@ -129,13 +133,13 @@ Symptom-first lookup table covering common and obscure failure modes. Pair with 
 
 ## Bridge unreachable / "(no response)" in the robot's voice
 
-**Symptom:** The robot says something like "no response" or goes silent after you speak. xiaozhi-server logs show a failed HTTP POST or a failed `docker exec` call.
+**Symptom:** The robot says something like "no response" or goes silent after you speak. xiaozhi-server logs show a failed HTTP call to `dotty-pi` or `dotty-behaviour`.
 
 **Fix:**
-1. Check that the `bridge.py` dashboard container and the `dotty-pi` brain container are running: `docker ps | grep -E 'bridge|dotty-pi'`
-2. Test the bridge dashboard health endpoint: `curl http://<XIAOZHI_HOST>:8081/health`
-3. For `PiVoiceLLM` failures, check that the `dotty-pi` container is healthy and the Docker socket is bind-mounted into the xiaozhi container. `docker exec -i dotty-pi echo ok` should return `ok`.
-4. If the bridge container crashes on startup, check its logs: `docker logs bridge`
+1. Check that the stack containers are running: `docker compose ps`
+2. Test the bridge dashboard health endpoint: `curl http://<DEPLOY_HOST>:8081/health`
+3. For `PiVoiceLLM` failures, check the dotty-pi RPC endpoint: `curl http://127.0.0.1:8091/health`
+4. If a service crashes on startup, check its logs: `docker compose logs --tail=100 <service>`
 
 ---
 
@@ -144,10 +148,10 @@ Symptom-first lookup table covering common and obscure failure modes. Pair with 
 **Symptom:** After pulling a new xiaozhi-esp32-server image, the container fails to start or behaves differently.
 
 **Fix:**
-1. Pin the image tag in `docker-compose.yml` before upgrading. The `server_latest` tag is a moving target.
+1. Pin the upstream xiaozhi base image by digest in the root Dockerfile before upgrading.
 2. Check the upstream changelog for breaking config changes — `data/.config.yaml` keys may have been renamed or removed.
-3. If custom providers fail after an upgrade, the upstream Python module structure may have changed. Check that the mount target paths still exist inside the new image.
-4. Roll back by specifying the previous image tag in `docker-compose.yml` and running `docker compose up -d`.
+3. If custom providers fail after an upgrade, the upstream Python module structure may have changed. Check that the Dockerfile copy target paths still exist in the new base image.
+4. Roll back to the previous Git revision and run `docker compose up -d --build`.
 
 ---
 

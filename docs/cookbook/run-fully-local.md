@@ -1,60 +1,50 @@
 ---
 title: Run Fully Local
-description: Run the entire stack with zero cloud dependencies using Ollama.
+description: Run the full stack without cloud model calls by using the Ollama profile in compose.yml.
 ---
 
 # Run Fully Local
 
-ASR and TTS are already local. Adding Ollama closes the last cloud
-dependency (the LLM call).
-
-This is the **simple single-binary path** — pick Ollama when you only
-need one model resident at a time and want the easiest setup. If you
-need to run multiple models concurrently (e.g. the default `PiVoiceLLM`
-brain, where `qwen3.5:4b` for the pi outer loop and `qwen3.6:27b-think`
-for `think_hard` share VRAM), use
-[llama-swap](./llama-swap-concurrent-models.md) instead — it solves the
-multi-model serving problem Ollama doesn't.
-
-## When to use which compose file
-
-- `compose.all-in-one.yml` — single-host bundle that runs xiaozhi-server,
-  the bridge, and (with the override) Ollama on the same machine. Good for
-  laptops, single-host home servers, and demos.
-- `compose.local.override.yml` — applied on top of either compose file to
-  add the Ollama container with NVIDIA GPU passthrough.
+ASR and TTS already run locally. The optional `local-llm` profile starts
+Ollama from the same root `compose.yml`, so `dotty-pi` can use local models for
+both the normal route and `think_hard`.
 
 ## Prerequisites
 
-- NVIDIA GPU (8B model needs ~5 GB VRAM, 30B needs ~18 GB).
+- An NVIDIA GPU with enough VRAM for the selected model.
 - NVIDIA Container Toolkit installed on the Docker host.
 
-## Steps
+## Configure
 
-1. Start the stack with the local override:
+Add these values to the root `.env`:
+
+```env
+COMPOSE_PROFILES=local-llm
+DOTTY_PI_BASE_URL=http://ollama:11434/v1
+DOTTY_PI_API_KEY=ollama
+DOTTY_PI_PROVIDER=ollama
+DOTTY_PI_MODEL=qwen3:8b
+VOICE_THINKER_MODEL=qwen3:8b
+NARRATIVE_LLM_URL=http://ollama:11434/v1
+NARRATIVE_MODEL=qwen3:8b
+```
+
+The normal and `think_hard` routes can use different Ollama model IDs when
+there is enough VRAM to keep or swap both models. `dotty-behaviour` reaches the
+same container through `http://ollama:11434`; no host-published port is used for
+container-to-container narrative calls.
+
+## Start and pull the model
 
 ```bash
-docker compose -f compose.all-in-one.yml -f compose.local.override.yml up -d
+make setup
+
+curl -fsS http://127.0.0.1:11434/api/pull \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"qwen3:8b","stream":false}'
 ```
 
-2. Pull a model: `docker exec ollama ollama pull qwen3:8b`
+No alternate Compose file or manual edit to `data/.config.yaml` is needed.
+After the model download, ASR, LLM, and TTS can run without cloud API calls.
 
-3. Update `.config.yaml`:
-
-```yaml
-selected_module:
-  LLM: OpenAICompat
-LLM:
-  OpenAICompat:
-    url: http://ollama:11434/v1    # container-to-container DNS
-    api_key: unused                # Ollama ignores this
-    model: qwen3:8b
-    persona_file: personas/default.md
-```
-
-4. Restart: `docker compose restart xiaozhi-server`
-
-Now ASR (FunASR), LLM (Ollama), and TTS (Piper) are all local.
-No API keys or internet required after model download.
-
-See [llm-backends.md](../llm-backends.md) for a full comparison of options.
+See [llm-backends.md](../llm-backends.md) for backend comparisons.

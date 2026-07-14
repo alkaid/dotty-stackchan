@@ -52,7 +52,7 @@ show_missing = true
 # bridge.py has an intentional late `from fastapi import APIRouter` after
 # the admin-router setup block. Refactoring it would just create churn.
 "bridge.py" = ["E402"]
-# xiaozhi-patches are bind-mount overrides that have to preserve upstream
-# file structure (imports after a duck-typed shim class, etc.) — adding a
-# top-level import block would diverge from the source they're patching.
+# xiaozhi-patches are image-baked overrides that preserve the upstream file
+# structure (imports after a duck-typed shim class, etc.). Adding a top-level
+# import block would diverge from the source they're patching.
 "custom-providers/xiaozhi-patches/**" = ["E402"]

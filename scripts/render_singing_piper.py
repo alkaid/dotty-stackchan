@@ -9,13 +9,9 @@ audio injection path used by `_handle_dance()`.
 This sounds like pitched/melodic speech, not real singing. For higher quality,
 use Phase 2 (DiffSinger via OpenUtau) and `postprocess_song.py`.
 
-Run inside the xiaozhi-server container (which has piper, scipy, numpy):
-
-    docker compose exec xiaozhi-esp32-server python /opt/xiaozhi-esp32-server/scripts/render_singing_piper.py
-
-(Mount the scripts/ directory into the container, or copy the script in first.)
-
-Or run from a local venv with: pip install piper-tts numpy scipy
+Run from a workstation venv with `pip install piper-tts numpy scipy`. The
+generated WAV is written to `songs/` and becomes part of the xiaozhi image on
+the next Compose build.
 """
 
 from __future__ import annotations
@@ -35,6 +31,9 @@ from scipy import signal
 BEAT_MS = 582
 TOTAL_BEATS = 48
 TARGET_SR = 24000
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_MODEL = REPO_ROOT / "models/piper/en_GB-cori-medium.onnx"
+DEFAULT_OUTPUT = REPO_ROOT / "songs/macarena.wav"
 
 # (start_beat, end_beat, lyric, pitch_scale, length_scale)
 # pitch_scale > 1.0 = higher pitch (chipmunk via faster resample)
@@ -142,7 +141,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--model",
-        default="/opt/xiaozhi-esp32-server/models/piper/en_GB-cori-medium.onnx",
+        default=str(DEFAULT_MODEL),
         help="Path to Piper .onnx voice model",
     )
     parser.add_argument(
@@ -152,7 +151,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--out",
-        default="/opt/xiaozhi-esp32-server/config/assets/songs/macarena.wav",
+        default=str(DEFAULT_OUTPUT),
         help="Output WAV path",
     )
     args = parser.parse_args()

@@ -48,16 +48,15 @@ def _env_float(name: str, default: float) -> float:
 HOST: str = os.environ.get("DOTTY_BEHAVIOUR_HOST", "0.0.0.0")
 PORT: int = _env_int("DOTTY_BEHAVIOUR_PORT", 8090)
 
-# Outbound: xiaozhi-server admin endpoints (same-host loopback under
-# Unraid's network_mode: host). Empty XIAOZHI_HOST disables dispatch
-# the same way bridge.py does today.
-XIAOZHI_HOST: str = os.environ.get("XIAOZHI_HOST", "")
-XIAOZHI_HTTP_PORT: int = _env_int("XIAOZHI_OTA_PORT", 8003)
+# Outbound: xiaozhi-server admin endpoints over the compose network.
+XIAOZHI_ADMIN_BASE_URL: str = os.environ.get(
+    "XIAOZHI_ADMIN_BASE_URL", "http://xiaozhi-esp32-server:8003"
+).rstrip("/")
 
 # Outbound: llama-swap for narrative LLM (dreams, dance reflections,
 # scene synthesis). Mirrors bridge.py's NARRATIVE_LLM_URL.
 NARRATIVE_LLM_URL: str = os.environ.get(
-    "NARRATIVE_LLM_URL", "http://127.0.0.1:8080/v1"
+    "NARRATIVE_LLM_URL", "http://host.docker.internal:8080/v1"
 )
 NARRATIVE_MODEL: str = os.environ.get("NARRATIVE_MODEL", "qwen3.6:27b-think")
 NARRATIVE_TIMEOUT_SEC: float = _env_float("NARRATIVE_TIMEOUT_SEC", 90.0)
@@ -130,7 +129,10 @@ FACE_IDENTITY_REFRESH_QUIET_SEC: float = _env_float(
 )
 
 # purr_player — cat-purr asset on head_pet_started.
-PURR_AUDIO_PATH: str = os.environ.get("PURR_AUDIO_PATH", "/var/lib/dotty-behaviour/assets/purr.opus")
+# Remote path resolved by xiaozhi-server, not a file opened by this process.
+PURR_AUDIO_PATH: str = os.environ.get(
+    "PURR_AUDIO_PATH", "/opt/xiaozhi-esp32-server/config/assets/purr.opus"
+)
 PURR_COOLDOWN_SEC: float = _env_float("PURR_COOLDOWN_SEC", 5.0)
 # Approximate playback length — used to extend `last_chat_t` so the
 # sound localiser stays quiet while the purr plays.
@@ -172,17 +174,18 @@ VISION_MODEL: str = os.environ.get("VISION_MODEL", "google/gemini-2.0-flash-001"
 VISION_API_URL: str = os.environ.get(
     "VISION_API_URL", "https://openrouter.ai/api/v1/chat/completions"
 )
-VISION_API_KEY: str = os.environ.get(
-    "VISION_API_KEY", os.environ.get("OPENROUTER_API_KEY", "")
+VISION_API_KEY: str = (
+    os.environ.get("VISION_API_KEY", "").strip()
+    or os.environ.get("OPENROUTER_API_KEY", "").strip()
 )
 VISION_TIMEOUT_SEC: float = _env_float("VISION_TIMEOUT", 15.0)
 
 # Optional split — point the VLM at a local model (e.g. Ollama
 # Qwen2.5-VL) while VISION_API_URL still serves the cloud-routed
 # narrative LLM. Defaults to the legacy VISION_* values.
-VLM_MODEL: str = os.environ.get("VLM_MODEL", VISION_MODEL)
-VLM_API_KEY: str = os.environ.get("VLM_API_KEY", VISION_API_KEY)
-VLM_API_URL: str = os.environ.get("VLM_API_URL", VISION_API_URL)
+VLM_MODEL: str = os.environ.get("VLM_MODEL", "").strip() or VISION_MODEL
+VLM_API_KEY: str = os.environ.get("VLM_API_KEY", "").strip() or VISION_API_KEY
+VLM_API_URL: str = os.environ.get("VLM_API_URL", "").strip() or VISION_API_URL
 
 # How long an idle-photo room_view cache entry is fresh enough that
 # subsequent triggers within the window skip the VLM call.
@@ -207,8 +210,8 @@ ROOM_VIEW_TALK_KICKOFF_GRACE_SEC: float = _env_float(
 AUDIO_CAPTION_MODEL: str = os.environ.get(
     "AUDIO_CAPTION_MODEL", "google/gemini-2.5-flash"
 )
-AUDIO_CAPTION_API_KEY: str = os.environ.get(
-    "AUDIO_CAPTION_API_KEY", VISION_API_KEY
+AUDIO_CAPTION_API_KEY: str = (
+    os.environ.get("AUDIO_CAPTION_API_KEY", "").strip() or VISION_API_KEY
 )
 AUDIO_CAPTION_API_URL: str = os.environ.get(
     "AUDIO_CAPTION_API_URL",
@@ -320,9 +323,9 @@ GWS_BIN: str = os.environ.get("GWS_BIN", "/usr/local/bin/gws")
 CALENDAR_HOUSEHOLD_BUCKET: str = os.environ.get(
     "CALENDAR_HOUSEHOLD_BUCKET", "_household"
 )
-CALENDAR_PERSON_PREFIX_RE: str = os.environ.get(
-    "CALENDAR_PERSON_PREFIX_RE",
-    r"^\s*\[(?P<person>[A-Za-z][A-Za-z0-9_-]{0,31})\]\s*(?P<rest>.+)$",
+CALENDAR_PERSON_PREFIX_RE: str = (
+    os.environ.get("CALENDAR_PERSON_PREFIX_RE", "").strip()
+    or r"^\s*\[(?P<person>[A-Za-z][A-Za-z0-9_-]{0,31})\]\s*(?P<rest>.+)$"
 )
 
 # Proactive greeter state file — env-overridable but defaults under the

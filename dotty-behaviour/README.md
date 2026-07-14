@@ -15,28 +15,24 @@ bridge. Cutover executed and RPi powered off **2026-05-19** under
 ## What this is
 
 A FastAPI app pinned to `python:3.12-slim-bookworm` running on Unraid
-in `network_mode: host`. xiaozhi-server (same host) talks to it on
-`http://<XIAOZHI_HOST>:8090` — loopback (`127.0.0.1`) only works if
+in the root `compose.yml`. xiaozhi-server talks to it on
+`http://dotty-behaviour:8090` — loopback (`127.0.0.1`) only works if
 xiaozhi-server is also on host networking, which it isn't in the
-current deployment (it's on the `xiaozhi-server_default` bridge net,
-so its loopback resolves to itself). Use the host LAN IP. The
-container is a near-direct lift of
+current deployment (it's on the Compose bridge network, so its loopback
+resolves to itself). The container is a near-direct lift of
 `bridge.py` + `bridge/*` minus the obsolete `/api/message` /
 `/api/voice/*` / ZeroClaw stdio plumbing that PiVoiceLLM made
 redundant in `#36`.
 
-## Build + run on Unraid
+## Build + run
 
 ```bash
-ssh root@<UNRAID_HOST> '
-  mkdir -p /mnt/user/appdata/dotty-behaviour-src \
-           /mnt/user/appdata/dotty-behaviour/{state,logs,secrets} &&
-  cd /mnt/user/appdata/dotty-behaviour-src &&
-  # copy this directory tree here, then:
-  docker build -t dotty-behaviour:0.1.0 . &&
-  docker compose up -d
-'
+cd <XIAOZHI_PATH>
+docker compose up -d --build dotty-behaviour
 ```
+
+The root `compose.yml` is the only deployment entry point. The image contains
+all application source; Compose mounts only state, logs, and secrets.
 
 ## Why a separate container
 
@@ -59,7 +55,6 @@ the Dockerfile copies them straight into `/app`.
 ```
 dotty-behaviour/
 ├── Dockerfile
-├── docker-compose.yml
 ├── requirements.txt
 ├── README.md
 ├── conftest.py                  # pytest rootdir marker
@@ -102,7 +97,7 @@ Subsequent slices land:
 
 Cutover landed 2026-05-19. xiaozhi-server's `VISION_BRIDGE_URL` env
 var was flipped from the old RPi bridge URL to
-`http://<XIAOZHI_HOST>:8090` (the Unraid LAN IP, not loopback — see
+`http://dotty-behaviour:8090` (Compose DNS, not loopback — see
 the networking note above), and the matching `plugins.vision_explain`
 URL in `data/.config.yaml` was flipped the same way. Full runbook +
 lessons-learned in [`docs/cutover-behaviour.md`](../docs/cutover-behaviour.md).

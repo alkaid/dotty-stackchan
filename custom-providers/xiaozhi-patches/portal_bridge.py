@@ -6,7 +6,7 @@ the Dotty admin dashboard can fire `startToChat` against an active device
 connection (which is what the bridge needs to make the device actually
 speak / emote / fire MCP tools — the bridge has no WS to the device).
 
-This file is mounted into the container at /opt/xiaozhi-esp32-server/core/
+This file is baked into the container at /opt/xiaozhi-esp32-server/core/
 """
 
 from typing import Any

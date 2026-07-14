@@ -30,7 +30,7 @@ further because children become the audience:
 - Custom xiaozhi-server providers (`pi_voice/`, `openai_compat/`, `edge_stream.py`,
   `fun_local.py`, `piper_local.py`)
 - Docker Compose configuration and container security (including the
-  `/var/run/docker.sock` bind-mount used by `PiVoiceLLM`)
+  direct access to the Docker daemon)
 - Content-safety prompt enforcement (persona prompt sandwich, emoji prefix
   enforcement, Kid Mode filtering)
 - The bridge Docker image and its CI pipeline

@@ -7,10 +7,10 @@ description: Single-host architecture and message flow for the self-hosted voice
 
 ## TL;DR
 
-- Two hosts: **robot** (StackChan on your desk) and a **single Docker host** (`<XIAOZHI_HOST>`) that runs all four server-side services.
+- Two hosts: **robot** (StackChan on your desk) and a **single Docker host** (`<DEPLOY_HOST>`) that runs all four server-side services.
 - Audio goes robot → xiaozhi-server → (text) → dotty-pi → (response text) → xiaozhi-server → (audio) → robot. The Docker host never sends audio to the robot — xiaozhi-server handles that.
 - The default voice provider is **`PiVoiceLLM`**, selected via `selected_module.LLM` in `.config.yaml`. One documented alternate exists (`OpenAICompat`) — see [llm-backends.md](./llm-backends.md).
-- Everything is LAN-local **except** cloud-routed LLM calls (smart-mode, VLM, audio caption). EdgeTTS is cloud when selected; Piper is fully local.
+- Everything is LAN-local except configured cloud model calls. The default model route uses a sub2api-compatible endpoint; the optional Ollama profile keeps the normal and `think_hard` routes local. EdgeTTS is cloud when selected; Piper is fully local.
 - The robot speaks the **Xiaozhi WebSocket protocol** (see [protocols.md](./protocols.md)). It has no knowledge of the services running on the Docker host.
 
 > **Cutover note (2026-05-19, issue #36):** The stack previously ran on three hosts — a separate ZeroClaw host (Raspberry Pi) ran the ZeroClaw Rust agent + a FastAPI bridge under systemd. That host has been retired. The brain is now the `dotty-pi` container; the voice provider is `PiVoiceLLM`. See [cutover-behaviour.md](./cutover-behaviour.md) for the historical runbook.
@@ -23,7 +23,7 @@ flowchart LR
         SC["M5Stack StackChan<br/>ESP32-S3"]
     end
 
-    subgraph DockerHost["Docker host — &lt;XIAOZHI_HOST&gt;"]
+    subgraph DockerHost["Docker host — &lt;DEPLOY_HOST&gt;"]
         XZ["xiaozhi-esp32-server<br/>:8000 WS + :8003 HTTP"]
         subgraph XZMods["voice pipeline"]
             VAD["SileroVAD"]
@@ -36,19 +36,18 @@ flowchart LR
         BR["bridge.py<br/>FastAPI :8081 (/ui dashboard)"]
     end
 
-    subgraph Llama["llama-swap (same host or LAN GPU host)"]
-        SLIM["qwen3.5:4b<br/>(pi outer loop)"]
-        THINK["qwen3.6:27b-think<br/>(think_hard target)"]
+    subgraph Models["OpenAI-compatible backend"]
+        SIMPLE["DOTTY_PI_MODEL<br/>(normal route)"]
+        THINK["VOICE_THINKER_MODEL<br/>(think_hard route)"]
     end
 
-    Cloud["OpenRouter<br/>(smart_mode, VLM,<br/>audio caption)"]
+    Cloud["Vision / audio backend<br/>(optional cloud or local)"]
 
     SC -->|"WebSocket<br/>Xiaozhi protocol"| XZ
     XZ --- VAD & ASR & PV & TTS
-    PV -->|"docker exec -i dotty-pi<br/>pi --mode rpc (JSONL stdio)"| PI
-    PI -->|"outer loop"| SLIM
+    PV -->|"HTTP RPC<br/>dotty-pi:8091"| PI
+    PI -->|"outer loop"| SIMPLE
     PI -->|"think_hard escalation"| THINK
-    PI -.->|"smart_mode ON"| Cloud
     XZ -->|"perception event<br/>POST /api/perception/event"| BH
     BH -.->|"VLM / audio caption"| Cloud
     TTS -->|"audio stream"| XZ
@@ -63,12 +62,12 @@ Solid arrows are per-turn data flow; dotted arrows are cloud / conditional. All 
 |---|---|---|---|
 | **StackChan** | Desk | Captures audio, plays audio, renders face, runs MCP tools for head/LED/camera | ESP32-S3 firmware built from `m5stack/StackChan` |
 | **xiaozhi-esp32-server** | Docker host | VAD → ASR → LLM (proxy) → TTS pipeline, emotion dispatch, OTA, admin surface | Docker container |
-| **PiVoiceLLM custom provider** | Docker host (inside xiaozhi container) | Default LLM provider — translates each voice turn into a pi RPC request, streams TTS-bound text back | Python, mounted via volume |
+| **PiVoiceLLM custom provider** | Docker host (inside xiaozhi container) | Default LLM provider — translates each voice turn into a pi RPC request, streams TTS-bound text back | Python, baked into the image |
 | **dotty-pi** | Docker host | The voice-tool brain — pi coding agent with the `dotty-pi-ext` extension; owns the agent loop and tool dispatch | Docker container (`dotty-pi`) |
 | **dotty-behaviour** | Docker host | Perception event bus, 11 consumer classes (the running set is config-gated), vision/audio explain endpoints, proactive greeter, calendar context | FastAPI container, port 8090 |
 | **bridge.py** | Docker host | Admin dashboard service (`/ui`, port 8081). Voice and perception roles were retired in #36; dashboard port to dotty-behaviour is pending. | FastAPI container, port 8081 |
-| **llama-swap** | Same host or LAN GPU host | Routes OpenAI-compatible requests to per-model llama-server children; co-loads `qwen3.5:4b` (pi outer loop) and `qwen3.6:27b-think` (`think_hard` target) | Docker container (`ghcr.io/mostlygeek/llama-swap:cuda`) |
-| **OpenRouter** | Cloud | Routes cloud LLM calls (smart_mode `claude-sonnet-4-6`, VLM `gemini-2.0-flash`, audio caption `gemini-2.5-flash`) | External |
+| **sub2api / OpenAI-compatible backend** | External or LAN | Serves the configurable normal and `think_hard` model IDs | External API, or the optional Ollama Compose profile |
+| **Vision/audio backend** | Cloud or LAN | Serves VLM and audio-caption requests used by dotty-behaviour | OpenAI-compatible API |
 
 ## Data flow (single utterance, PiVoiceLLM — normal turn)
 
@@ -80,16 +79,16 @@ sequenceDiagram
     participant XZ as xiaozhi-server
     participant PV as PiVoiceLLM / PiClient
     participant PI as dotty-pi<br/>(pi agent)
-    participant LS as llama-swap<br/>qwen3.5:4b
+    participant Model as DOTTY_PI_MODEL<br/>(OpenAI-compatible)
 
     User->>SC: speaks
     SC->>XZ: Opus audio frames (WebSocket)
     XZ->>XZ: SileroVAD → speech end
     XZ->>XZ: FunASR / Whisper → text
     XZ->>PV: generate() call
-    PV->>PI: docker exec -i dotty-pi pi --mode rpc (JSONL over stdio)
-    PI->>LS: chat/completions
-    LS-->>PI: "😊 The sky is blue!"
+    PV->>PI: POST /turn (HTTP RPC over Compose network)
+    PI->>Model: chat/completions
+    Model-->>PI: "😊 The sky is blue!"
     PI-->>PV: JSONL text chunks (TTS-bound only)
     PV-->>XZ: streamed text
     XZ->>XZ: strip leading emoji → emotion frame
@@ -106,50 +105,52 @@ Tool dispatch happens entirely inside the `dotty-pi` container. The pi agent wit
 sequenceDiagram
     autonumber
     participant PI as dotty-pi<br/>(pi agent + dotty-pi-ext)
-    participant LS4 as llama-swap<br/>qwen3.5:4b
-    participant THK as llama-swap<br/>qwen3.6:27b-think
+    participant Simple as DOTTY_PI_MODEL
+    participant Think as VOICE_THINKER_MODEL
     participant BH as dotty-behaviour<br/>:8090
 
-    PI->>LS4: chat/completions
-    LS4-->>PI: tool_call: think_hard(question)
-    PI->>THK: direct POST /v1/chat/completions<br/>(enable_thinking=false, 200-token cap)
-    THK-->>PI: reasoned answer
-    PI->>LS4: chat/completions (tool result in context)
-    LS4-->>PI: streamed final answer
+    PI->>Simple: chat/completions
+    Simple-->>PI: tool_call: think_hard(question)
+    PI->>Think: direct POST /v1/chat/completions<br/>(DOTTY_PI_THINK_* settings)
+    Think-->>PI: reasoned answer
+    PI->>Simple: chat/completions (tool result in context)
+    Simple-->>PI: streamed final answer
 
     Note over PI,BH: take_photo tool variant
     PI->>BH: GET /api/voice/take_photo
     BH-->>PI: latest cached vision description
 ```
 
-The five voice tools in `dotty-pi-ext`: `memory_lookup`, `remember`, `think_hard`, `take_photo`, `play_song`. See [brain.md](./brain.md) for the full tool catalogue.
+The seven voice tools in `dotty-pi-ext`: `memory_lookup`, `remember`,
+`recall_person`, `remember_person`, `think_hard`, `take_photo`, and
+`play_song`. See [brain.md](./brain.md) for the full tool catalogue.
 
 ## Why this shape
 
 - **Audio lives with xiaozhi-server** because the StackChan firmware already speaks the Xiaozhi WS protocol. xiaozhi-esp32-server is the matching server; any alternative would require reimplementing that protocol.
-- **The brain is a container on the same host** because co-locating dotty-pi with xiaozhi-server eliminates network latency on the `docker exec` stdio pipe and avoids a second host to manage.
-- **The seam is a custom xiaozhi LLM provider** (`pi_voice.py`, mounted into the container). xiaozhi-server thinks it's calling a local Python LLM class; the class runs pi via `docker exec`. That means the brain can be swapped for anything without touching xiaozhi.
+- **The brain is a peer container on the same Compose network** because co-locating dotty-pi with xiaozhi-server keeps voice-turn latency low and avoids a second host to manage.
+- **The seam is a custom xiaozhi LLM provider** (`pi_voice.py`, baked into the image). xiaozhi-server thinks it is calling a local Python LLM class; the class calls the dotty-pi HTTP RPC wrapper. That means the brain can be swapped for anything without changing xiaozhi runtime files.
 - **dotty-behaviour is a peer container** rather than code inside xiaozhi-server because perception consumers fire 200-token narrative LLM calls; blocking the xiaozhi event loop with that would spike voice latency. A peer container preserves the operational separation that already worked on the Raspberry Pi.
 
 ## What each service sees
 
 **StackChan** knows only:
-- An OTA HTTP URL (`http://<XIAOZHI_HOST>:8003/xiaozhi/ota/`)
-- A WS URL (provided by OTA response, typically `ws://<XIAOZHI_HOST>:8000/xiaozhi/v1/`)
+- An OTA URL (`<XIAOZHI_PUBLIC_OTA_BASE_URL>/xiaozhi/ota/`)
+- A WS URL (provided by OTA response as `<XIAOZHI_PUBLIC_WS_BASE_URL>/xiaozhi/v1/`)
 
 It does **not** know about dotty-pi, dotty-behaviour, or any LLM.
 
 **xiaozhi-server** knows:
 - Its own device-facing WS + OTA ports
 - A handful of pluggable providers selected via `data/.config.yaml` `selected_module:`
-- The `container_name: dotty-pi` config key, which PiVoiceLLM uses for `docker exec`
+- The `DOTTY_PI_URL` environment variable, defaulting to `http://dotty-pi:8091`
 
-It does **not** know about llama-swap model names, brain.db, or OpenRouter keys.
+It does **not** know model aliases, `brain.db`, or model-provider API keys.
 
 **dotty-pi (pi agent)** knows:
-- The llama-swap endpoint and model aliases (via `models.json` inside the container)
-- The `dotty-pi-ext` extension with the five voice tools
-- The persona files and `brain.db` (mounted from host appdata)
+- The OpenAI-compatible endpoint and model aliases rendered into `models.json`
+- The `dotty-pi-ext` extension with the seven voice tools
+- The persona files baked into the `dotty-pi` image and the persistent `brain.db`
 
 It does **not** know about the xiaozhi WebSocket protocol or audio.
 
@@ -165,15 +166,18 @@ It does **not** know about the xiaozhi WebSocket protocol or audio.
 
 Admin routes are split across two services and reached at different prefixes.
 
-### bridge.py `/admin/*` (Docker host, `127.0.0.1:8081` only)
+### bridge.py `/admin/*` (Docker host, `DOTTY_BRIDGE_PORT`)
 
-Runtime mutations. Bound to localhost only — LAN callers get `403`. Note: the voice-path mutations (`smart-mode` daemon restart, `persona` workspace files) referenced pre-cutover ZeroClaw config; those endpoints exist but their ZeroClaw-specific side-effects are retired.
+Runtime mode and state mutations for operator scripts. Requests require the
+shared `X-Admin-Token` value from `DOTTY_ADMIN_TOKEN`. The dashboard itself
+uses `/ui/actions/*` with dashboard auth and CSRF protection. Retired ZeroClaw
+persona and source-rewrite endpoints have been removed.
 
 | Endpoint | Effect |
 |---|---|
 | `POST /admin/kid-mode` `{enabled: bool}` | Persists + hot-reloads kid-mode. Pushes the kid pip via the xiaozhi admin relay. |
-| `POST /admin/smart-mode` `{enabled: bool, device_id?}` | Persists + pushes the smart pip. Smart-mode model swap now handled in PiVoiceLLM. |
-| `POST /admin/safety` `{action, tool}` | Edits `MCP_TOOL_ALLOWLIST` via marker block; py_compile-validated. |
+| `POST /admin/smart-mode` `{enabled: bool, device_id?}` | Persists + pushes the smart pip. It does not swap the PiVoiceLLM model. |
+| `POST /admin/state` `{state, device_id?}` | Sets the high-level robot state through the xiaozhi admin relay. |
 
 ### xiaozhi-server `/xiaozhi/admin/*` (Docker host, port 8003)
 
@@ -235,20 +239,19 @@ The canonical working copies live in this repo.
 
 | File / Directory | Deployed to | Purpose |
 |---|---|---|
-| `dotty-pi/` | Docker host `/mnt/user/appdata/dotty-pi-src/` | pi agent container (Dockerfile + docker-compose.yml) |
-| `dotty-pi-ext/` | Docker host (bind-mounted into dotty-pi) | dotty-pi-ext extension — five voice tools |
-| `dotty-behaviour/` | Docker host `/mnt/user/appdata/dotty-behaviour-src/` | Perception + ambient behaviour container |
-| `bridge.py` | Docker host (bridge.py container) | Admin dashboard FastAPI service |
-| `bridge/requirements.txt` | bridge.py container | Pinned Python deps |
-| `custom-providers/pi_voice/` | xiaozhi container `core/providers/llm/pi_voice/` | PiVoiceLLM + PiClient |
-| `custom-providers/openai_compat/` | xiaozhi container `core/providers/llm/openai_compat/` | OpenAICompat alternate provider |
-| `custom-providers/edge_stream/` | xiaozhi container `core/providers/tts/` | Streaming EdgeTTS provider |
-| `custom-providers/piper_local/` | xiaozhi container `core/providers/tts/` | Local Piper TTS provider |
-| `custom-providers/asr/fun_local.py` | xiaozhi container `core/providers/asr/` | Patched FunASR provider (adds `language` config key) |
-| `custom-providers/xiaozhi-patches/` | xiaozhi container (drop-in overrides) | Admin routes + shared_llm singleton |
+| `compose.yml` | Docker host `/mnt/user/appdata/dotty-stackchan-src/` | Single Compose entry for all services |
+| `dotty-pi/` | Docker image build context | pi agent container Dockerfile and RPC wrapper |
+| `dotty-pi-ext/` | Baked into dotty-pi image | dotty-pi-ext extension |
+| `dotty-behaviour/` | Docker image build context | Perception + ambient behaviour container |
+| `bridge.py`, `bridge/` | Baked into dotty-bridge image | Admin dashboard FastAPI service and pinned dependencies |
+| `custom-providers/pi_voice/` | Baked into xiaozhi image under `core/providers/llm/pi_voice/` | PiVoiceLLM + PiClient |
+| `custom-providers/openai_compat/` | Baked into xiaozhi image under `core/providers/llm/openai_compat/` | OpenAICompat alternate provider |
+| `custom-providers/edge_stream/` | Baked into xiaozhi image under `core/providers/tts/` | Streaming EdgeTTS provider |
+| `custom-providers/piper_local/` | Baked into xiaozhi image under `core/providers/tts/` | Local Piper TTS provider |
+| `custom-providers/asr/fun_local.py` | Baked into xiaozhi image under `core/providers/asr/` | Patched FunASR provider (adds `language` config key) |
+| `custom-providers/xiaozhi-patches/` | Baked into xiaozhi image as drop-in overrides | Admin routes + shared_llm singleton |
 | `.config.yaml` | Docker host `data/.config.yaml` | xiaozhi-server config override |
-| `docker-compose.yml.template` | Docker host `<XIAOZHI_PATH>` | Container definition |
-| `scripts/deploy-behaviour.sh` | run from admin workstation | Deploy dotty-behaviour to Docker host |
+| `scripts/deploy-stack.sh` | run from admin workstation | Sync repo and deploy the full stack |
 
 Volume mounts (xiaozhi-server) are listed in [quickstart.md](./quickstart.md#deployment-layout).
 

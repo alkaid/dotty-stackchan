@@ -31,7 +31,7 @@ asks). Only the child-specific rules (4-9) are removed.
 
 Both the bridge dashboard's `POST /admin/kid-mode` endpoint and the dashboard toggle persist the new value and call `_apply_kid_mode(enabled)`, which re-binds the dashboard's kid-mode globals (`KID_MODE`, `VOICE_TURN_SUFFIX` via `build_turn_suffix(enabled)`). **No dashboard restart is required** to flip the persisted value at runtime. (This is the dashboard's own state; the live voice path reads kid-mode independently — see below.)
 
-The xiaozhi-server side of kid-mode lives in the active LLM provider's persona / suffix. On the live `PiVoiceLLM` path, `pi_voice.py` reads kid-mode as a process-start snapshot and bakes it into the suffix produced by `build_turn_suffix(kid_mode)`; the persona is loaded per-session by the `dotty-pi` agent. A persona/topic change lands on the next turn, while flipping the kid-mode snapshot itself requires a container restart to re-read the value into the live provider instance.
+The xiaozhi-server side of kid-mode lives in the active LLM provider's persona / suffix. On the live `PiVoiceLLM` path, `pi_voice.py` reads kid-mode as a process-start snapshot and bakes it into the suffix produced by `build_turn_suffix(kid_mode)`; `dotty-pi` loads its baked persona when the pi process starts. Persona source changes require an image rebuild, while changing the kid-mode environment requires Compose to recreate the affected services.
 
 ## Guardrail details
 
@@ -343,7 +343,10 @@ is to route the `stackchan` channel to a model with stronger built-in safety
 
 ### Modifying the Topic Blocklist
 
-Edit the suffix text in `build_turn_suffix()` in `custom-providers/textUtils.py` (rule 5), and/or edit rule 5 in `personas/dotty_voice.md`. After editing, restart the xiaozhi-server container.
+Edit the suffix text in `build_turn_suffix()` in `custom-providers/textUtils.py`
+(rule 5), and/or edit rule 5 in `personas/dotty_voice.md`. Both are image
+content, so rebuild the affected services:
+`docker compose up -d --build xiaozhi-esp32-server dotty-pi`.
 
 ### Changing the Self-Harm Response
 

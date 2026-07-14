@@ -29,13 +29,11 @@ class XiaozhiAdminClient:
 
     def __init__(
         self,
-        host: str,
-        port: int,
+        base_url: str,
         *,
         timeout_s: float = 3.0,
     ) -> None:
-        self._host = host
-        self._port = port
+        self._base_url = base_url.rstrip("/")
         self._timeout_s = timeout_s
         # Admin-auth (see http_server.py middleware). Sent only when set; the
         # server enforces only when its own DOTTY_ADMIN_TOKEN is set, so an
@@ -44,12 +42,11 @@ class XiaozhiAdminClient:
 
     @property
     def configured(self) -> bool:
-        """True iff a host is set — empty host disables all dispatch
-        the same way bridge.py treats `not _XIAOZHI_HOST`."""
-        return bool(self._host)
+        """True iff a base URL is set."""
+        return bool(self._base_url)
 
     def _url(self, path: str) -> str:
-        return f"http://{self._host}:{self._port}{path}"
+        return f"{self._base_url}{path}"
 
     def _headers(self) -> dict[str, str]:
         return {"X-Admin-Token": self._admin_token} if self._admin_token else {}
@@ -81,7 +78,7 @@ class XiaozhiAdminClient:
     ) -> bool:
         if not self.configured:
             log.warning(
-                "%s: XIAOZHI_HOST not set; cannot reach xiaozhi-server",
+                "%s: XIAOZHI_ADMIN_BASE_URL not set; cannot reach xiaozhi-server",
                 label,
             )
             return False

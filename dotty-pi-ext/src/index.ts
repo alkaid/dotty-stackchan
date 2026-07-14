@@ -1,6 +1,5 @@
 // dotty-pi-ext — pi extension that exposes Dotty's voice tools.
-// Loaded by the dotty-pi container's pi runtime via the extensions/
-// bind-mount (see ../dotty-pi/README.md).
+// Baked into the dotty-pi image and loaded through its extensions symlink.
 //
 // This entry point is intentionally thin: it just registers tools. All
 // behaviour lives in tools/* (testable in isolation) and lib/* (the

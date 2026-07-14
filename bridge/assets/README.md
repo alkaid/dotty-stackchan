@@ -23,10 +23,10 @@ becomes effectively permanent voice content for the robot.
       gain -12
   ```
 
-  The bridge points at this file via `PURR_AUDIO_PATH` (default
-  `bridge/assets/purr.opus`). If the file is missing the purr
-  consumer logs a warning and no-ops — it never crashes the
-  perception bus.
+  The root Dockerfile copies this file into the xiaozhi image at
+  `/opt/xiaozhi-esp32-server/config/assets/purr.opus`. The behaviour service
+  sends that path to xiaozhi's `play-asset` endpoint; it does not read the file
+  from its own container.
 
 ## Why "bypass kid-mode sandwich"
 

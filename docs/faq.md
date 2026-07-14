@@ -71,7 +71,9 @@ This is a self-hosted system — you control the prompt, the model, and every lo
 
 ### Can I change the robot's personality?
 
-Yes. The persona is a Markdown file — `personas/dotty_voice.md`, loaded by the active LLM provider. Edit it and restart the relevant container.
+Yes. The persona is a Markdown file in `personas/`. Persona files are baked
+into the model-facing images, so edit the source and rebuild the relevant
+service. See [Change Persona](cookbook/change-persona.md).
 
 There's also a secondary `prompt:` key in `data/.config.yaml` that gets injected as a system message — a useful place for voice-pipeline-level hints. Full instructions: [cookbook/change-persona.md](./cookbook/change-persona.md).
 

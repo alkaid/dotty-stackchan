@@ -21,7 +21,7 @@
 # land in models/piper/.
 #
 # After install, run `make doctor` to verify, then restart the server:
-#   docker compose restart xiaozhi-server
+#   docker compose restart xiaozhi-esp32-server
 
 set -euo pipefail
 
@@ -30,7 +30,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CATALOG_FILE="${SCRIPT_DIR}/voice-catalog.txt"
 PIPER_DIR="${REPO_DIR}/models/piper"
-# Prefer the rendered config (matches the docker-compose bind mount);
+# Prefer the rendered config (matches the Compose bind mount);
 # fall back to the legacy root location for pre-template checkouts.
 if [[ -f "${REPO_DIR}/data/.config.yaml" ]]; then
   CONFIG_FILE="${REPO_DIR}/data/.config.yaml"
@@ -207,7 +207,7 @@ PY
 
 if $APPLY; then
     apply_config
-    info "Now restart the server:  docker compose restart xiaozhi-server"
+    info "Now restart the server:  docker compose restart xiaozhi-esp32-server"
 else
     cat <<EOF
 
@@ -217,7 +217,7 @@ Next steps:
   1. Edit .config.yaml so TTS.LocalPiper.voice / model_path / config_path
      point at the new files (or re-run with --apply to do it for you).
   2. Run: make doctor
-  3. Restart: docker compose restart xiaozhi-server
+  3. Restart: docker compose restart xiaozhi-esp32-server
 
 EOF
 fi

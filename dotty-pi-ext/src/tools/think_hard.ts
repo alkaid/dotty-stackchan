@@ -1,12 +1,9 @@
 // think_hard voice tool — pi-extension port of
 // bridge.py:_voice_tool_think_hard (lines ~3998-4038).
 //
-// Bypasses the agent loop entirely: a direct POST to llama-swap at
-// qwen3.6:27b-think (the small-context 27B in the `voice` matrix set,
-// stays resident alongside qwen3.5:4b so most escalations are warm).
-// `enable_thinking=false` is critical — qwen3 defaults to reasoning
-// mode and would otherwise eat the entire 200-token budget on `<think>`
-// tokens, leaving content empty.
+// Bypasses the agent loop entirely: a direct POST to the configured
+// OpenAI-compatible thinker endpoint. This keeps the normal voice route
+// and the deeper think_hard route switchable independently.
 //
 // Contract (must match Python so the LLM's tuned-for prompt behaviour
 // holds):
@@ -22,29 +19,40 @@ import {
   type ChatCompletionRequest,
 } from "../lib/llama_swap.ts";
 
-const DEFAULT_MODEL = process.env.VOICE_THINKER_MODEL ?? "qwen3.6:27b-think";
+const DEFAULT_MODEL = process.env.VOICE_THINKER_MODEL ?? "dotty-think";
 const SYSTEM_PROMPT =
   "Answer the user's question concisely in 1-2 sentences. Be precise.";
 const MAX_OUTPUT_CHARS = 500;
 
 /**
  * Pure request-body builder. Separated so the oracle can diff our body
- * shape against bridge.py's without hitting llama-swap.
+ * shape against bridge.py's without hitting the thinker endpoint.
  */
 export function buildThinkRequest(
   question: string,
   model: string = DEFAULT_MODEL,
 ): ChatCompletionRequest {
+  const maxTokens = Number.parseInt(
+    process.env.DOTTY_PI_THINK_MAX_TOKENS ?? "4096",
+    10,
+  );
+  const reasoning = ["1", "true", "yes", "on"].includes(
+    (process.env.DOTTY_PI_THINK_REASONING ?? "true").toLowerCase(),
+  );
+  const reasoningEffort = (
+    process.env.DOTTY_PI_THINK_REASONING_EFFORT ?? "high"
+  ).trim();
   return {
     model,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: question },
     ],
-    max_tokens: 200,
+    max_tokens: Number.isFinite(maxTokens) && maxTokens > 0 ? maxTokens : 4096,
     temperature: 0.3,
     stream: false,
-    chat_template_kwargs: { enable_thinking: false },
+    chat_template_kwargs: { enable_thinking: reasoning },
+    ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
   };
 }
 
@@ -52,6 +60,7 @@ export interface ThinkHardOptions {
   url?: string;
   timeoutSec?: number;
   model?: string;
+  apiKey?: string;
 }
 
 /**
@@ -68,6 +77,7 @@ export async function runThinkHard(
     const content = await postChatCompletion(body, {
       url: opts.url,
       timeoutSec: opts.timeoutSec,
+      apiKey: opts.apiKey,
     });
     // Python: (content or "").strip()[:500]
     // JS .slice is OK here — the 500-char cap is generous and the
@@ -92,7 +102,7 @@ export const thinkHardTool = {
     "1-2 sentence answer. Use only when the quick chat path can't " +
     "handle the question (math, lookups, technical specifics).",
   promptSnippet:
-    "Escalate a single question to the qwen3.6:27b-think reasoning model.",
+    "Escalate a single question to the configured think_hard model.",
   promptGuidelines: [
     "Use think_hard when the user asks a factual or technical question " +
       "that needs precise reasoning. Keep the question self-contained.",

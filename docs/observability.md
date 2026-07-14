@@ -25,12 +25,11 @@ and a starter Grafana dashboard lives at
 
 ## Enable
 
-Metrics are on by default once the bridge has its dependency installed:
+Metrics and their Python dependency are built into the bridge image:
 
 ```bash
-pip install -r bridge/requirements.txt   # picks up prometheus-client
-docker compose restart bridge            # or restart however you deployed it
-curl -s http://<XIAOZHI_HOST>:8081/metrics | head -20
+docker compose up -d --build dotty-bridge
+curl -s http://<DEPLOY_HOST>:8081/metrics | head -20
 ```
 
 If `prometheus-client` is missing the bridge still serves traffic — it
@@ -47,13 +46,13 @@ scrape_configs:
     metrics_path: /metrics
     scrape_interval: 15s
     static_configs:
-      - targets: ["<XIAOZHI_HOST>:8081"]
+      - targets: ["<DEPLOY_HOST>:8081"]
         labels:
           service: dotty-bridge
           env: home
 ```
 
-Replace `<XIAOZHI_HOST>` with the LAN address of the Docker host running
+Replace `<DEPLOY_HOST>` with the LAN address of the Docker host running
 the bridge. Reload Prometheus (`SIGHUP` or `/-/reload`) and confirm the
 target shows `UP` under **Status → Targets**.
 

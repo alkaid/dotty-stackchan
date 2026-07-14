@@ -21,30 +21,45 @@ Check `selected_module.LLM` in `.config.yaml`, then read the matching block:
 
 | Provider | Persona source |
 |---|---|
-| `PiVoiceLLM` (current default) | The persona file configured in the pi agent's extension (`dotty-pi-ext`). Defaults to `personas/dotty_voice.md`. |
+| `PiVoiceLLM` (current default) | `DOTTY_PI_SYSTEM_PROMPT_FILE`; defaults to `/opt/dotty-pi/personas/dotty_voice.md` in the `dotty-pi` image. |
 | `OpenAICompat` (and similar generic providers) | `LLM.OpenAICompat.persona_file` in `.config.yaml`. |
 
 ## Switch to a different shipped persona
 
-1. Edit `.config.yaml` (or the pi agent persona config for `PiVoiceLLM`):
+For `PiVoiceLLM`, select one of the persona files already baked into the image:
 
-   ```yaml
-   LLM:
-     OpenAICompat:
-       persona_file: personas/smart.md   # was personas/default.md
-   ```
+```env
+DOTTY_PI_SYSTEM_PROMPT_FILE=/opt/dotty-pi/personas/smart.md
+```
 
-2. Restart: `docker compose restart xiaozhi-server`.
+Then apply the changed environment:
+
+```bash
+docker compose up -d dotty-pi
+```
+
+For `OpenAICompat`, change `LLM.OpenAICompat.persona_file` in
+`data/.config.yaml`, then restart `xiaozhi-esp32-server`.
 
 ## Create your own persona
 
 1. Copy an existing file: `cp personas/dotty_voice.md personas/pirate.md`.
 2. Edit the new file. **Keep the emoji instruction line** — the firmware needs it to animate the face. See [emoji-mapping.md](../emoji-mapping.md) for the allowlist (😊😆😢😮🤔😠😐😍😴).
-3. Point the active provider's `persona_file` at the new file in `.config.yaml`, then restart.
+3. Rebuild the relevant image so the new file is included:
+
+   ```bash
+   docker compose up -d --build dotty-pi xiaozhi-esp32-server
+   ```
+
+4. Point the active provider at `/opt/dotty-pi/personas/pirate.md` for
+   `PiVoiceLLM`, or `personas/pirate.md` for `OpenAICompat`.
 
 ## Quick inline edit (no file swap)
 
-Edit the top-level `prompt:` block in `.config.yaml` directly. This is the xiaozhi-server system prompt; it gets injected alongside the persona file for most providers. On the `PiVoiceLLM` path the pi agent's own persona file (in `dotty-pi-ext`) is the primary source — edit that for substantive personality changes.
+Edit the top-level `prompt:` block in `data/.config.yaml` directly. This is the
+xiaozhi-server system prompt used by generic providers. On the `PiVoiceLLM`
+path, the `dotty-pi` image persona is the primary source, so persona source
+changes require an image rebuild.
 
 ## Notes
 

@@ -45,14 +45,12 @@ htmlcov/
 node_modules/
 package-lock.json
 
-# `make setup` artifacts — rendered from *.template files. Sources live in
-# git (.config.yaml.template, docker-compose.yml.template,
-# zeroclaw-bridge.service.template); rendered copies are per-deployment.
+# `make setup` artifacts. compose.yml is tracked; generated config is local.
 /.config.yaml
-/data/.config.yaml
-/docker-compose.yml
+/data/.config.yaml*
+/data/bin/
+/tmp/
 /zeroclaw-bridge.service
-/.wizard.env
 
 # Downloaded ASR/TTS model weights (fetched by `make fetch-models`). Big
 # binaries, easy to regenerate; not part of the repo.

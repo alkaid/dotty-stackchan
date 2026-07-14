@@ -42,7 +42,7 @@ def _client_with_recorder(monkeypatch_target_module, *, status: int = 200,
 ]:
     rec = _Recorder(status_code=status, raise_exc=raise_exc)
     monkeypatch_target_module.requests.post = rec.post
-    client = XiaozhiAdminClient("127.0.0.1", 8003, timeout_s=2.5)
+    client = XiaozhiAdminClient("http://xiaozhi-esp32-server:8003", timeout_s=2.5)
     return client, rec
 
 
@@ -51,7 +51,7 @@ def test_not_configured_returns_false_without_posting() -> None:
 
     rec = _Recorder()
     mod.requests.post = rec.post
-    client = XiaozhiAdminClient("", 8003)
+    client = XiaozhiAdminClient("")
     ok = asyncio.run(client.abort("dev-1"))
     assert ok is False
     assert rec.calls == []
@@ -65,7 +65,7 @@ def test_abort_url_and_payload() -> None:
     assert ok is True
     assert rec.calls == [
         {
-            "url": "http://127.0.0.1:8003/xiaozhi/admin/abort",
+            "url": "http://xiaozhi-esp32-server:8003/xiaozhi/admin/abort",
             "json": {"device_id": "dev-1"},
             "timeout": 2.5,
         }
@@ -174,7 +174,7 @@ def test_admin_token_header_sent_when_set() -> None:
     prev = os.environ.get("DOTTY_ADMIN_TOKEN")
     os.environ["DOTTY_ADMIN_TOKEN"] = "s3cret"
     try:
-        client = XiaozhiAdminClient("127.0.0.1", 8003)
+        client = XiaozhiAdminClient("http://xiaozhi-esp32-server:8003")
         asyncio.run(client.abort("dev-1"))
         assert rec.last_headers == {"X-Admin-Token": "s3cret"}
     finally:
@@ -194,7 +194,7 @@ def test_no_admin_token_header_when_unset() -> None:
     prev = os.environ.get("DOTTY_ADMIN_TOKEN")
     os.environ.pop("DOTTY_ADMIN_TOKEN", None)
     try:
-        client = XiaozhiAdminClient("127.0.0.1", 8003)
+        client = XiaozhiAdminClient("http://xiaozhi-esp32-server:8003")
         asyncio.run(client.abort("dev-1"))
         assert rec.last_headers == {}
     finally:

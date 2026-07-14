@@ -4,13 +4,13 @@ xiaozhi-server custom LLM provider that routes voice turns through the
 [`dotty-pi`](../../dotty-pi/) container instead of bridge.py. The
 RPi-replacement path per [#36](https://github.com/BrettKinny/dotty-stackchan/issues/36).
 
-**Status: production — the live default.** Wired into xiaozhi-server via `selected_module.LLM: PiVoiceLLM`. 6/6 unit tests pass.
+**Status: production — the live default.** Wired into xiaozhi-server via `selected_module.LLM: PiVoiceLLM`.
 
 What works:
-- `pi_client.py` — long-lived `pi --mode rpc` client; spawns once,
-  reuses across turns via `new_session`. Filters `thinking_delta`,
-  auto-cancels dialog `extension_ui_request`s, drops fire-and-forget
-  UI requests. Throws `PiClientError` on rejected prompts / timeouts.
+- `pi_client.py` — HTTP client for the `dotty-pi` RPC service. The RPC
+  service owns the long-lived `pi --mode rpc` process, filters
+  `thinking_delta`, auto-cancels dialog `extension_ui_request`s, and throws
+  `PiClientError` on rejected prompts or timeouts.
 - `pi_voice.py` — `LLMProvider` subclass that translates xiaozhi's
   `(session_id, dialogue)` → pi prompt and yields text deltas back as
   a sync generator (the shape xiaozhi's voice loop expects).
@@ -30,27 +30,27 @@ Still open:
 ## Architecture
 
 ```
-xiaozhi-server (Docker)                     dotty-pi (Docker, same host)
+xiaozhi-server (Docker)                     dotty-pi (Docker, same compose network)
 ┌────────────────────────────┐              ┌──────────────────────────────┐
 │  selected_module.LLM:      │              │  pi (idling via sleep ∞)     │
 │    PiVoiceLLM              │              │                              │
-│       │                    │              │  on `docker exec -i` from    │
-│       ↓ async call         │              │  PiClient:                   │
-│  custom-providers/         │  docker exec │    pi --provider ollama      │
-│    pi_voice/               │  ───────────→│      --model qwen3.5:4b      │
-│      pi_voice.py           │              │      --mode rpc              │
-│      pi_client.py          │  ←─────────  │      --thinking off          │
-│                            │  stdout RPC  │      <prompt>                │
+│       │                    │              │  HTTP wrapper starts:        │
+│       ↓ async call         │              │    pi --provider sub2api     │
+│  custom-providers/         │  HTTP RPC    │      --model dotty-simple    │
+│    pi_voice/               │  ───────────→│      --mode rpc              │
+│      pi_voice.py           │              │      --thinking off          │
+│      pi_client.py          │  ←─────────  │      <prompt>                │
+│                            │  text stream │                              │
 └────────────────────────────┘              └──────────────────────────────┘
                                                           ↓
                                                 ┌──────────────────────┐
                                                 │ dotty-pi-ext         │
-                                                │   5 voice tools      │
+                                                │   7 voice tools      │
                                                 │   (memory_lookup,    │
                                                 │    think_hard, …)    │
                                                 └──────────────────────┘
                                                           ↓
-                                            llama-swap (qwen3.6:27b-think)
+                                            sub2api thinker (dotty-think)
                                             xiaozhi-admin (songs, MCP)
                                             brain.db (FTS5)
 ```
@@ -63,13 +63,12 @@ Translates xiaozhi's chat-completion interface to a pi RPC turn. Async
 `chat_stream` shape so xiaozhi can pipe text deltas straight to TTS
 without buffering the full reply.
 
-### `pi_client.py` — Unraid-local RPC client
+### `pi_client.py` — HTTP RPC client
 
-Owns the long-lived pi process. Per #36's Step-5 constraints:
+Calls the RPC wrapper exposed by `dotty-pi` on `http://dotty-pi:8091`.
+The wrapper owns the long-lived pi process. Per #36's Step-5 constraints:
 
-- **Single persistent pi process** spawned once per xiaozhi-server boot
-  (don't respawn per turn — that recovers the 1.2–1.8 s spike-measured
-  startup tax).
+- **Single persistent pi process** spawned once per dotty-pi boot.
 - **Auto-cancel `extension_ui_request`** with `{cancelled: true}` to
   prevent pi from blocking on UI prompts no one will answer.
 - **Filter `assistantMessageEvent.type == "thinking_delta"`** out of the
@@ -82,25 +81,13 @@ So xiaozhi-server's `core.providers.llm.pi_voice` import path resolves.
 
 ## Wiring into xiaozhi-server
 
-Three things are required, all in the repo's `docker-compose.yml`:
+The root Dockerfile copies the provider package into the xiaozhi image, while
+`compose.yml` supplies only runtime configuration:
 
 ```yaml
-volumes:
-  # 1. the provider package itself
-  - ./custom-providers/pi_voice:/opt/xiaozhi-esp32-server/core/providers/llm/pi_voice
-  # 2. + 3. docker CLI binary + host docker socket — PiClient shells out to
-  # `docker exec -i dotty-pi pi --mode rpc ...` from INSIDE this container,
-  # which needs both the binary in $PATH and access to the daemon.
-  - /var/run/docker.sock:/var/run/docker.sock
-  - /usr/bin/docker:/usr/bin/docker:ro
+environment:
+  DOTTY_PI_URL: http://dotty-pi:8091
 ```
-
-⚠️ **Security caveat:** bind-mounting `/var/run/docker.sock` gives this
-container effective root on the docker host — it can `docker run --privileged
-anything` against the daemon. Acceptable for a single-purpose self-hosted
-appliance like Dotty; do NOT enable on a shared / multi-tenant host. If that
-trade-off isn't acceptable in your environment, refactor `pi_client.py` to
-talk to pi over a TCP/Unix socket exposed by a sidecar (out of scope for v1).
 
 Then in `data/.config.yaml`:
 
@@ -111,14 +98,18 @@ selected_module:
 LLM:
   PiVoiceLLM:
     type: pi_voice
-    container_name: dotty-pi
+    url: http://dotty-pi:8091
 ```
 
-The model + extension wiring lives container-side (in `dotty-pi/models.json`
-and the bind-mounted `dotty-pi-ext/`); xiaozhi-server doesn't need to know
-about them. The container default is `qwen3.5:4b` outer + `qwen3.6:27b-think`
-escalation per `dotty-pi/README.md` — using `qwen3.6:27b` here would evict
-the voice matrix set, see that README's "Model selection" section.
+The model + extension wiring lives container-side: `dotty-pi` renders
+`/root/.pi/agent/models.json` from compose `.env`, and `dotty-pi-ext` is baked
+into the image. xiaozhi-server only needs its outer route env to match the
+simple model id:
+
+```env
+DOTTY_PI_PROVIDER=sub2api
+DOTTY_PI_MODEL=dotty-simple
+```
 
 The `bridge.py` admin dashboard service continues to run independently;
 it is no longer in the voice path. Its former `/api/voice/*` and
@@ -128,11 +119,10 @@ it is no longer in the voice path. Its former `/api/voice/*` and
 
 If PiVoiceLLM misbehaves, flip to the `OpenAICompat` provider in
 `data/.config.yaml` (`selected_module.LLM: OpenAICompat`, pointed at a local
-llama-swap or any OpenAI-compatible endpoint) and `docker compose restart
-xiaozhi-esp32-server`. (The former `Tier1Slim` rollback provider was removed
-in the 2026-05-29 alignment pass — its tool escalation depended on the retired
-ZeroClaw bridge.) The docker-socket mount above is harmless when running other
-LLM providers.
+sub2api or any OpenAI-compatible endpoint) and `docker compose restart
+xiaozhi-esp32-server`. The former `Tier1Slim` rollback provider was removed
+in the 2026-05-29 alignment pass because its tool escalation depended on the
+retired ZeroClaw bridge.
 
 ## Open questions resolved during this slice
 
@@ -154,9 +144,9 @@ LLM providers.
   extension: a small write (sqlite_brain_db.write) triggered by a
   `[REMEMBER: …]` marker in the final assistant text, plus a per-turn
   log row.
-- **Persona file location.** The pi extension reads from
-  `/mnt/user/appdata/dotty-pi/persona/` (bind-mounted into the container).
-  Wiring is stable; runtime persona-swap mechanism TBD.
+- **Persona file location.** Persona files are baked into the `dotty-pi`
+  image under `/opt/dotty-pi/personas/`; `DOTTY_PI_SYSTEM_PROMPT_FILE`
+  selects the active file when the pi process starts.
 
 ## See also
 

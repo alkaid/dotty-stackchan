@@ -1,7 +1,8 @@
-"""PiClient — long-lived RPC client for the dotty-pi container.
+"""PiClient — clients for the dotty-pi RPC service.
 
-Owns a single `pi --mode rpc` process spawned via `docker exec -i` and
-multiplexes turns over its stdin/stdout. Per #36 Step-5 invariants:
+Production uses `PiHttpClient` to call dotty-pi over the compose network.
+The lower-level `PiClient` remains for unit-testing pi's JSONL RPC contract.
+Per #36 Step-5 invariants:
 
   1. **Spawn once.** The pi process is started lazily on the first
      turn and reused across all subsequent turns. Between turns we
@@ -40,61 +41,11 @@ import subprocess
 import threading
 import time
 from queue import Empty, Queue
-from typing import Callable, Iterable, Iterator, List, Optional
+from typing import Callable, Iterator, List, Optional
 
+import requests
 
 logger = logging.getLogger(__name__)
-
-
-_DEFAULT_PI_FLAGS = (
-    "--mode", "rpc",
-    "--provider", "ollama",
-    "--model", "qwen3.5:4b",
-    "--no-session",
-    "--no-context-files",
-    "--offline",
-    "--no-skills",
-    "--no-prompt-templates",
-    "--no-themes",
-    "--thinking", "off",
-)
-
-
-def default_subprocess_factory(
-    docker_host_user: str,
-    docker_host: str,
-    container: str,
-    pi_args: Iterable[str],
-) -> subprocess.Popen:
-    """Spawn pi via ssh + docker exec. Replace in tests via PiClient's
-    `subprocess_factory` parameter."""
-    cmd = [
-        "ssh", f"{docker_host_user}@{docker_host}",
-        "docker", "exec", "-i", container, "pi", *pi_args,
-    ]
-    return subprocess.Popen(
-        cmd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        bufsize=0,
-    )
-
-
-def local_exec_subprocess_factory(
-    container: str,
-    pi_args: Iterable[str],
-) -> subprocess.Popen:
-    """For when xiaozhi-server runs on the same host as dotty-pi (the
-    target deployment). Skips the ssh hop."""
-    cmd = ["docker", "exec", "-i", container, "pi", *pi_args]
-    return subprocess.Popen(
-        cmd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        bufsize=0,
-    )
 
 
 SubprocessFactory = Callable[[], subprocess.Popen]
@@ -102,6 +53,42 @@ SubprocessFactory = Callable[[], subprocess.Popen]
 
 class PiClientError(Exception):
     pass
+
+
+class PiHttpClient:
+    """HTTP client for dotty-pi's in-container pi RPC server."""
+
+    def __init__(self, base_url: str, *, turn_timeout_sec: float = 120.0):
+        self._base_url = base_url.rstrip("/")
+        self._turn_timeout_sec = turn_timeout_sec
+
+    def new_session(self) -> None:
+        try:
+            resp = requests.post(f"{self._base_url}/new_session", timeout=10)
+            resp.raise_for_status()
+        except Exception as exc:
+            raise PiClientError(f"new_session failed: {exc}") from exc
+
+    def iter_turn_text(self, prompt: str) -> Iterator[str]:
+        try:
+            with requests.post(
+                f"{self._base_url}/turn",
+                json={"message": prompt},
+                timeout=self._turn_timeout_sec,
+                stream=True,
+            ) as resp:
+                resp.raise_for_status()
+                for chunk in resp.iter_content(chunk_size=None, decode_unicode=True):
+                    if chunk:
+                        yield chunk
+        except Exception as exc:
+            raise PiClientError(f"turn failed: {exc}") from exc
+
+    def recent_stderr(self) -> List[str]:
+        return []
+
+    def close(self) -> None:
+        pass
 
 
 class PiClient:
@@ -356,14 +343,9 @@ class PiClient:
 
 # Convenience factory that wires the env-var-defaults into a
 # PiClient ready to be used by xiaozhi-server.
-def make_default_pi_client() -> PiClient:
-    container = os.environ.get("DOTTY_PI_CONTAINER", "dotty-pi")
-    pi_args: list[str] = list(_DEFAULT_PI_FLAGS)
-    extra = os.environ.get("DOTTY_PI_EXTRA_FLAGS", "").split()
-    if extra:
-        pi_args.extend(extra)
-    return PiClient(
-        subprocess_factory=lambda: local_exec_subprocess_factory(
-            container=container, pi_args=pi_args,
-        ),
+def make_default_pi_client() -> PiHttpClient:
+    url = os.environ.get("DOTTY_PI_URL", "http://dotty-pi:8091")
+    return PiHttpClient(
+        base_url=url,
+        turn_timeout_sec=float(os.environ.get("DOTTY_PI_TURN_TIMEOUT_SEC", "120")),
     )

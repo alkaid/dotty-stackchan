@@ -37,7 +37,7 @@ This is the **dark-room friendly** entry point: works with no light, no line of 
 
 ### 4. `/xiaozhi/admin/inject-text` — server-side LAN admin
 
-> **`curl -XPOST http://<XIAOZHI_HOST>:8000/xiaozhi/admin/inject-text -d '{"text":"...","device_id":"..."}'`**
+> **`curl -XPOST http://<DEPLOY_HOST>:8003/xiaozhi/admin/inject-text -H 'X-Admin-Token: <DOTTY_ADMIN_TOKEN>' -H 'Content-Type: application/json' -d '{"text":"...","device_id":"..."}'`**
 
 This is the path the portal "Greet" button and `dotty-behaviour` consumers (e.g. `face_greeter`) use. Strictly speaking it doesn't enter voice mode — it bypasses the listen pipeline entirely and inserts text directly into the LLM turn, skipping wake-word + ASR. Useful when you want Dotty to say something **without anyone needing to be physically present**: scheduled greetings, DM-style admin messages, automation hooks. Not exposed to the public internet.
 

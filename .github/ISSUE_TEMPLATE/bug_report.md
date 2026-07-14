@@ -27,5 +27,5 @@ What actually happened. Include log output if available.
 
 **Logs**
 ```
-Paste relevant logs here (docker logs, journalctl, serial monitor)
+Paste relevant logs here (docker compose logs, journalctl, serial monitor)
 ```

@@ -81,7 +81,7 @@ instead of bullet points. Tables scan faster and diff cleaner.
 
 ## Placeholders
 
-Use `<XIAOZHI_HOST>`, `<XIAOZHI_USER>`, `<XIAOZHI_PATH>`, etc. for any value that varies
+Use `<DEPLOY_HOST>`, `<XIAOZHI_USER>`, `<XIAOZHI_PATH>`, etc. for any value that varies
 per deployment. See the full list in `CONTRIBUTING.md`. Never commit real
 IPs, hostnames, or API keys.
 

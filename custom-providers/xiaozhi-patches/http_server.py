@@ -24,19 +24,15 @@ def _spawn(coro, *, name: str | None = None):
 
 
 # DOTTY-PATCH: play-asset path confinement. /xiaozhi/admin/play-asset hands its
-# `asset` field straight to ffmpeg (via pydub). Unauthenticated on the LAN, so
-# without confinement a caller could point the decoder at any readable file in
+# `asset` field straight to ffmpeg (via pydub). Without confinement, a caller
+# with the admin token could point the decoder at any readable file in
 # the container (existence-probe via 404-vs-403, exercise libav demuxer CVEs).
-# Restrict to known asset roots + an audio-extension allowlist. Default roots:
-# the songs mount and the dotty-behaviour assets dir (purr / security tones).
+# Restrict to the image-baked asset root plus an audio-extension allowlist.
 # Override with DOTTY_PLAY_ASSET_ROOTS (os.pathsep-separated absolute paths).
 import os as _os_mod
 
 _ASSET_OK_EXT = {".opus", ".ogg", ".wav", ".mp3"}
-_DEFAULT_ASSET_ROOTS = (
-    "/opt/xiaozhi-esp32-server/config/assets",
-    "/var/lib/dotty-behaviour/assets",
-)
+_DEFAULT_ASSET_ROOTS = ("/opt/xiaozhi-esp32-server/config/assets",)
 
 
 def _allowed_asset_roots() -> "list[str]":

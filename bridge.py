@@ -1,6 +1,6 @@
 """Dotty bridge — admin dashboard service (FastAPI on :8081, served at /ui).
 
-Post-#36 incarnation: bridge.py owns the dashboard, the localhost-only
+Post-#36 incarnation: bridge.py owns the dashboard, the token-protected
 `/admin/*` mutation surface, Prometheus `/metrics`, and a small set of
 xiaozhi-admin passthrough helpers used by the dashboard buttons (set-state,
 inject-text, abort, kid-mode/smart-mode toggles). Everything else — voice
@@ -15,10 +15,10 @@ running in dotty-behaviour.
 """
 
 import asyncio
+import hmac
 import json
 import logging
 import os
-import re
 import sys
 import time
 from contextlib import asynccontextmanager
@@ -26,10 +26,8 @@ from pathlib import Path
 from typing import Any
 
 # Sibling import shim — custom-providers/textUtils.py is the canonical
-# home for safety/format constants (also bind-mounted into the xiaozhi
-# container as core.utils.textUtils). Bridge runs outside the container
-# so it imports it as a sibling. Drop this if/when bridge becomes a
-# proper package.
+# home for safety/format constants and is copied into both images. Bridge
+# imports it as a sibling. Drop this if/when bridge becomes a proper package.
 sys.path.insert(0, str(Path(__file__).parent / "custom-providers"))
 
 import requests
@@ -164,8 +162,9 @@ def _write_smart_mode(enabled: bool) -> None:
 # dashboard never talks to xiaozhi directly; it goes through these so the
 # bridge can layer state-file + metric updates around the call.
 
-_XIAOZHI_HOST = os.environ.get("XIAOZHI_HOST", "")
-_XIAOZHI_HTTP_PORT = int(os.environ.get("XIAOZHI_OTA_PORT", "8003"))
+_XIAOZHI_ADMIN_BASE_URL = os.environ.get(
+    "XIAOZHI_ADMIN_BASE_URL", "http://xiaozhi-esp32-server:8003"
+).rstrip("/")
 _ADMIN_TOKEN = os.environ.get("DOTTY_ADMIN_TOKEN", "").strip()
 
 
@@ -178,9 +177,9 @@ def _xiaozhi_admin_headers() -> dict:
 
 async def _dispatch_abort(device_id: str) -> None:
     """Send xiaozhi admin abort to stop in-flight TTS for a device."""
-    if not _XIAOZHI_HOST:
+    if not _XIAOZHI_ADMIN_BASE_URL:
         return
-    url = f"http://{_XIAOZHI_HOST}:{_XIAOZHI_HTTP_PORT}/xiaozhi/admin/abort"
+    url = f"{_XIAOZHI_ADMIN_BASE_URL}/xiaozhi/admin/abort"
     payload = {"device_id": device_id}
 
     def _post() -> None:
@@ -200,10 +199,10 @@ async def _dispatch_set_state(device_id: str, state: str) -> bool:
     """Fire MCP self.robot.set_state via /xiaozhi/admin/set-state.
     Valid state: idle / talk / story_time / security / sleep / dance.
     Returns True on 2xx."""
-    if not _XIAOZHI_HOST:
-        log.warning("set_state: XIAOZHI_HOST not set")
+    if not _XIAOZHI_ADMIN_BASE_URL:
+        log.warning("set_state: XIAOZHI_ADMIN_BASE_URL not set")
         return False
-    url = f"http://{_XIAOZHI_HOST}:{_XIAOZHI_HTTP_PORT}/xiaozhi/admin/set-state"
+    url = f"{_XIAOZHI_ADMIN_BASE_URL}/xiaozhi/admin/set-state"
     payload = {"device_id": device_id, "state": state}
 
     def _post() -> bool:
@@ -225,10 +224,10 @@ async def _dispatch_set_state(device_id: str, state: str) -> bool:
 async def _dispatch_set_toggle(device_id: str, name: str, enabled: bool) -> bool:
     """Fire MCP self.robot.set_toggle via /xiaozhi/admin/set-toggle.
     Toggle name must be one of: kid_mode / smart_mode."""
-    if not _XIAOZHI_HOST:
-        log.warning("set_toggle: XIAOZHI_HOST not set")
+    if not _XIAOZHI_ADMIN_BASE_URL:
+        log.warning("set_toggle: XIAOZHI_ADMIN_BASE_URL not set")
         return False
-    url = f"http://{_XIAOZHI_HOST}:{_XIAOZHI_HTTP_PORT}/xiaozhi/admin/set-toggle"
+    url = f"{_XIAOZHI_ADMIN_BASE_URL}/xiaozhi/admin/set-toggle"
     payload = {"device_id": device_id, "name": name, "enabled": enabled}
 
     def _post() -> bool:
@@ -245,30 +244,6 @@ async def _dispatch_set_toggle(device_id: str, name: str, enabled: bool) -> bool
             return False
 
     return await asyncio.to_thread(_post)
-
-
-# ---------------------------------------------------------------------------
-# MCP tool permission policy — edited by /admin/safety
-# ---------------------------------------------------------------------------
-# Tools the firmware advertises via WebSocket handshake. The voice/MCP path
-# that read this list lived inside ZeroClaw and is gone post-#36; the
-# allowlist literal is kept here because /admin/safety mutates it in-place
-# and external operator scripts may still treat bridge.py as the source of
-# truth. Markers below bound the literal so the rewrite stays deterministic.
-# === ADMIN_ALLOWLIST_START ===
-MCP_TOOL_ALLOWLIST: set[str] = {
-    "get_device_status",
-    "audio_speaker.set_volume",
-    "screen.set_brightness",
-    "screen.set_theme",
-    "robot.get_head_angles",
-    "robot.set_head_angles",
-    "robot.set_led_color",
-    "robot.create_reminder",
-    "robot.get_reminders",
-    "robot.stop_reminder",
-}
-# === ADMIN_ALLOWLIST_END ===
 
 
 # ---------------------------------------------------------------------------
@@ -469,11 +444,10 @@ _perception_state: dict[str, dict] = {}
 # dashboard render unblockable we cap each fetch at 1.5s and degrade
 # to the empty fallback on any exception.
 #
-# DOTTY_BEHAVIOUR_URL is configurable for future flexibility, but bridge
-# runs network_mode: host alongside dotty-behaviour so localhost is the
-# expected production value.
+# DOTTY_BEHAVIOUR_URL is configurable for future flexibility. In the
+# compose stack, use http://dotty-behaviour:8090.
 DOTTY_BEHAVIOUR_URL = os.environ.get(
-    "DOTTY_BEHAVIOUR_URL", "http://localhost:8090"
+    "DOTTY_BEHAVIOUR_URL", "http://dotty-behaviour:8090"
 ).rstrip("/")
 _DOTTY_BEHAVIOUR_TIMEOUT_SEC = 1.5
 _DOTTY_BEHAVIOUR_CACHE_TTL_SEC = 2.0
@@ -658,9 +632,9 @@ if _configure_dashboard is not None:
 
     async def _dashboard_abort_device(*, device_id: str = "") -> dict:
         """Fire-and-forget POST to xiaozhi-server's admin abort route."""
-        if not _XIAOZHI_HOST:
-            return {"ok": False, "error": "XIAOZHI_HOST not set"}
-        url = f"http://{_XIAOZHI_HOST}:{_XIAOZHI_HTTP_PORT}/xiaozhi/admin/abort"
+        if not _XIAOZHI_ADMIN_BASE_URL:
+            return {"ok": False, "error": "XIAOZHI_ADMIN_BASE_URL not set"}
+        url = f"{_XIAOZHI_ADMIN_BASE_URL}/xiaozhi/admin/abort"
         payload: dict = {}
         if device_id:
             payload["device_id"] = device_id
@@ -684,9 +658,9 @@ if _configure_dashboard is not None:
         """POST to xiaozhi-server's /admin/inject-text so the named (or
         first-available) device runs the text through its post-ASR
         pipeline — intent detection, MCP tools, TTS."""
-        if not _XIAOZHI_HOST:
-            return {"ok": False, "error": "XIAOZHI_HOST not set"}
-        url = f"http://{_XIAOZHI_HOST}:{_XIAOZHI_HTTP_PORT}/xiaozhi/admin/inject-text"
+        if not _XIAOZHI_ADMIN_BASE_URL:
+            return {"ok": False, "error": "XIAOZHI_ADMIN_BASE_URL not set"}
+        url = f"{_XIAOZHI_ADMIN_BASE_URL}/xiaozhi/admin/inject-text"
         payload = {"text": text}
         if device_id:
             payload["device_id"] = device_id
@@ -767,27 +741,23 @@ if _configure_dashboard is not None:
 
 
 # ---------------------------------------------------------------------------
-# /admin/* — localhost-only runtime configuration mutations
+# /admin/* — token-protected runtime configuration mutations
 # ---------------------------------------------------------------------------
-# Editable from same-host operator scripts. The dashboard uses the
+# Intended for operator scripts and automation. The dashboard uses the
 # bridge.dashboard /ui/actions/* routes (which call into _dashboard_*
 # above), not these — these are the back-channel for ad-hoc CLI flips.
-# Paths/units are env-configurable; defaults are placeholders since the
-# zeroclaw daemon they used to point at is gone.
+# Docker port publishing does not preserve localhost as request.client.host,
+# so these routes use the same shared admin token as xiaozhi instead.
 
-_ADMIN_ALLOWED_PERSONA_FILES = {
-    "SOUL.md", "IDENTITY.md", "USER.md", "AGENTS.md",
-    "TOOLS.md", "BOOTSTRAP.md", "HEARTBEAT.md", "MEMORY.md",
-}
-_ADMIN_WORKSPACE_DIR = Path(
-    os.environ.get("DOTTY_PERSONA_DIR", "/var/lib/dotty-bridge/persona")
-)
-
-
-def _admin_require_localhost(request: Request) -> None:
-    host = request.client.host if request.client else ""
-    if host not in ("127.0.0.1", "::1", "localhost"):
-        raise HTTPException(status_code=403, detail="admin endpoints are localhost-only")
+def _admin_require_token(request: Request) -> None:
+    if not _ADMIN_TOKEN:
+        raise HTTPException(
+            status_code=503,
+            detail="DOTTY_ADMIN_TOKEN is not configured",
+        )
+    supplied = request.headers.get("X-Admin-Token", "").strip()
+    if not hmac.compare_digest(supplied.encode(), _ADMIN_TOKEN.encode()):
+        raise HTTPException(status_code=401, detail="invalid admin token")
 
 
 class _AdminKidModeIn(BaseModel):
@@ -805,18 +775,8 @@ class _AdminStateIn(BaseModel):
     device_id: str = ""
 
 
-class _AdminPersonaIn(BaseModel):
-    file: str
-    content: str
-
-
-class _AdminSafetyIn(BaseModel):
-    action: str
-    tool: str
-
-
 _admin_router = APIRouter(
-    prefix="/admin", dependencies=[Depends(_admin_require_localhost)],
+    prefix="/admin", dependencies=[Depends(_admin_require_token)],
 )
 
 
@@ -860,83 +820,6 @@ async def _admin_state(payload: _AdminStateIn) -> dict:
         )
     pushed = await _dispatch_set_state(payload.device_id, payload.state)
     return {"ok": True, "state": payload.state, "device_pushed": pushed}
-
-
-@_admin_router.post("/persona")
-async def _admin_persona(payload: _AdminPersonaIn) -> dict:
-    """Write a persona-file under the configured workspace dir. Edits
-    used to take effect on the next zeroclaw restart; with the voice
-    path moved to dotty-pi, the receiving end depends on
-    DOTTY_PERSONA_DIR being aimed at a dir dotty-pi reads. Kept on the
-    bridge so external operator scripts have a single localhost-only
-    surface for hot-editing persona files."""
-    if payload.file not in _ADMIN_ALLOWED_PERSONA_FILES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"file must be one of {sorted(_ADMIN_ALLOWED_PERSONA_FILES)}",
-        )
-    target = _ADMIN_WORKSPACE_DIR / payload.file
-    real = target.resolve() if target.is_symlink() or target.exists() else target
-    real.parent.mkdir(parents=True, exist_ok=True)
-    tmp = real.with_suffix(real.suffix + ".new")
-    tmp.write_text(payload.content)
-    tmp.replace(real)
-    return {
-        "ok": True, "file": str(target), "resolved": str(real),
-        "bytes": len(payload.content),
-    }
-
-
-@_admin_router.post("/safety")
-async def _admin_safety(payload: _AdminSafetyIn) -> dict:
-    """Add / remove a tool from MCP_TOOL_ALLOWLIST. Edits the literal in
-    place between the ADMIN_ALLOWLIST markers so the change persists
-    across restarts. Note: the voice/MCP path that read this list lived
-    in ZeroClaw and is gone — this endpoint is now a static-edit surface
-    rather than a live policy mutation."""
-    if payload.action not in ("add", "remove"):
-        raise HTTPException(status_code=400, detail="action must be 'add' or 'remove'")
-    if not re.fullmatch(r"[A-Za-z0-9._]+", payload.tool):
-        raise HTTPException(status_code=400, detail="tool name has invalid chars")
-    self_path = Path(__file__)
-    src = self_path.read_text()
-    start_marker = "# === ADMIN_ALLOWLIST_START ==="
-    end_marker = "# === ADMIN_ALLOWLIST_END ==="
-    if start_marker not in src or end_marker not in src:
-        raise HTTPException(status_code=500, detail="allowlist markers missing")
-    pre, rest = src.split(start_marker, 1)
-    block, post = rest.split(end_marker, 1)
-    set_re = re.compile(
-        r'MCP_TOOL_ALLOWLIST:\s*set\[str\]\s*=\s*\{([^}]*)\}',
-        re.DOTALL,
-    )
-    m_set = set_re.search(block)
-    if not m_set:
-        raise HTTPException(status_code=500, detail="allowlist set literal not found")
-    items = set(re.findall(r'"([^"]+)"', m_set.group(1)))
-    before_size = len(items)
-    if payload.action == "add":
-        items.add(payload.tool)
-    else:
-        items.discard(payload.tool)
-    new_items = sorted(items)
-    new_inner = "\n    " + ",\n    ".join(f'"{t}"' for t in new_items) + ",\n"
-    new_block = block[: m_set.start(1)] + new_inner + block[m_set.end(1):]
-    new_src = pre + start_marker + new_block + end_marker + post
-    new_path = self_path.with_suffix(".py.new")
-    new_path.write_text(new_src)
-    import py_compile
-    try:
-        py_compile.compile(str(new_path), doraise=True)
-    except py_compile.PyCompileError as exc:
-        new_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=422, detail=f"py_compile failed: {exc}")
-    new_path.replace(self_path)
-    return {
-        "ok": True, "action": payload.action, "tool": payload.tool,
-        "size_before": before_size, "size_after": len(new_items),
-        "note": "bridge.py allowlist updated; restart bridge to pick up the new value in-process",
-    }
 
 
 app.include_router(_admin_router)

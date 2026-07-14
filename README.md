@@ -8,11 +8,11 @@
 
 > ⚠️ **Heads up: this is not a stable project yet.** Dotty is buggy, frequently broken, and actively changing day-to-day. End-to-end behaviour works on the maintainer's hardware but regressions land all the time, the API and config surface shifts without notice, and a fresh deploy on someone else's gear has not been verified. Treat this as a hobby-grade work-in-progress, not a polished product. Bugs, PRs, and "this didn't work for me" issues all very welcome.
 >
-> **Known rough edges:** face emoji rendering is missing visual differentiation for 4 of 9 emotions (sad / surprise / love / laughing); sound-direction localizer has a hardware-AEC-related left-bias on M5Stack CoreS3 (energy detection works, direction is unreliable); kid-voice ASR on the SenseVoice CPU default still garbles some short utterances (WhisperLocal, auto-selected on GPU hosts, handles high-pitched kid speech better).
+> **Known rough edges:** face emoji rendering is missing visual differentiation for 4 of 9 emotions (sad / surprise / love / laughing); sound-direction localizer has a hardware-AEC-related left-bias on M5Stack CoreS3 (energy detection works, direction is unreliable); kid-voice ASR on the SenseVoice CPU default still garbles some short utterances (WhisperLocal can be enabled on GPU hosts and handles high-pitched kid speech better).
 >
 > **Where it's at:** the first stretch of this was vibe-coded pretty hard — I moved fast, chased ideas, and let the scope sprawl to prove out the whole end-to-end loop. That phase is over. I'm now deliberately pulling it back: deleting half-built features, trimming the docs, and hardening what's left so the core is solid rather than sprawling. Fewer things, done properly.
 
-Dotty is a fully self-hosted voice stack for the M5Stack StackChan desktop robot. Open-source firmware on the robot, [xiaozhi-esp32-server](https://github.com/xinnan-tech/xiaozhi-esp32-server) for voice I/O, and a local **pi** coding agent as the brain. ASR, TTS, and session state all run on your own hardware. The LLM is pluggable — the shipped default runs a small fast model for plain conversation and escalates hard questions to a more capable model, with [llama-swap](./docs/cookbook/llama-swap-concurrent-models.md) as the recommended local backend. Swap in [Ollama](./docs/cookbook/run-fully-local.md) for the simpler single-binary option, or point at OpenRouter / any OpenAI-compatible API if you'd rather use the cloud.
+Dotty is a fully self-hosted voice stack for the M5Stack StackChan desktop robot. Open-source firmware on the robot, [xiaozhi-esp32-server](https://github.com/xinnan-tech/xiaozhi-esp32-server) for voice I/O, and a local **pi** coding agent as the brain. ASR, TTS, and session state all run on your own hardware. The LLM is pluggable: the shipped configuration targets a sub2api-compatible endpoint with separate normal and `think_hard` model IDs. Enable the bundled [Ollama profile](./docs/cookbook/run-fully-local.md), use [llama-swap](./docs/cookbook/llama-swap-concurrent-models.md), or point at another OpenAI-compatible API.
 
 Out of the box, Dotty ships in **Kid Mode** — the persona plus a per-turn prompt sandwich keep responses age-appropriate and on-topic. This is prompt-level steering, **not** an output content filter (a blocked-words filter is planned — see [#138](https://github.com/BrettKinny/dotty-stackchan/issues/138)), and it's no substitute for supervision. Disable Kid Mode for a general-purpose assistant.
 
@@ -31,7 +31,7 @@ Full policy: [`AI_TRANSPARENCY.md`](./AI_TRANSPARENCY.md).
 ## Features
 
 - **Kid Mode (on by default)** — age-appropriate responses via persona + per-turn prompt steering. An output content filter is planned, not yet shipped ([#138](https://github.com/BrettKinny/dotty-stackchan/issues/138)); Kid Mode is not a substitute for supervision. Toggle off for general-purpose use. See [`docs/kid-mode.md`](./docs/kid-mode.md).
-- **Local ASR** — FunASR SenseVoiceSmall by default, no cloud transcription. WhisperLocal auto-selects on GPU hosts (better kid-speech accuracy); SenseVoiceOnnx is a lighter low-RAM option.
+- **Local ASR** — FunASR SenseVoiceSmall by default, no cloud transcription. WhisperLocal can be selected explicitly on GPU hosts for better kid-speech accuracy; SenseVoiceOnnx is a lighter low-RAM option.
 - **Local or cloud TTS** — Piper (offline) or EdgeTTS (cloud). Swap with a config change.
 - **Streaming responses** — the bridge streams LLM output to the voice pipeline for lower perceived latency.
 - **Emoji expressions** — every response starts with an emoji that the firmware maps to a face animation (smile, laugh, sad, surprise, thinking, angry, love, sleepy, neutral).
@@ -67,7 +67,7 @@ Full state taxonomy, colour palette, transition diagram, and per-state backing a
 
 ## Web dashboard (locally hosted)
 
-The dashboard service serves a web dashboard at `http://<XIAOZHI_HOST>:8081/ui` — host status, mode toggles (Kid Mode / Smart Mode), state switcher, perception card (face / identity), emoji presets, and a live event log (turns, perception events, errors). Light and dark themes follow the system preference. It runs as a small FastAPI service (`bridge.py`) on your own hardware — no external service ever sees your data.
+The dashboard service serves a web dashboard at `http://<DEPLOY_HOST>:8081/ui` — host status, mode toggles (Kid Mode / Smart Mode), state switcher, perception card (face / identity), emoji presets, and a live event log (turns, perception events, errors). Light and dark themes follow the system preference. It runs as a small FastAPI service (`bridge.py`) on your own hardware — no external service ever sees your data.
 
 <p align="center">
   <img src="docs/assets/dashboard-light.png" alt="Dotty dashboard — light theme" width="48%">
@@ -78,7 +78,7 @@ The dashboard service serves a web dashboard at `http://<XIAOZHI_HOST>:8081/ui` 
 ## Reference deployment
 
 - **Hardware**: M5Stack StackChan (CoreS3 + servo kit), firmware built from `m5stack/StackChan`.
-- **Brain**: a **pi** coding agent running in the `dotty-pi` container. It runs `qwen3.5:4b` on local [llama-swap](./docs/cookbook/llama-swap-concurrent-models.md) for the conversation loop and escalates hard questions to `qwen3.6:27b-think` (also on llama-swap) via its `think_hard` tool. xiaozhi-server's `PiVoiceLLM` provider hands each voice turn to the agent. See [`docs/brain.md`](./docs/brain.md).
+- **Brain**: a **pi** coding agent running in the `dotty-pi` container. The default configuration uses a sub2api-compatible endpoint with separate `dotty-simple` and `dotty-think` routes; Ollama is available through the optional Compose profile. xiaozhi-server's `PiVoiceLLM` provider hands each voice turn to the agent. See [`docs/brain.md`](./docs/brain.md).
 - **Voice I/O**: xiaozhi-esp32-server on Docker (any Linux Docker host).
 
 ## What runs where
@@ -86,15 +86,15 @@ The dashboard service serves a web dashboard at `http://<XIAOZHI_HOST>:8081/ui` 
 | Component | Host | Notes |
 |---|---|---|
 | StackChan (device) | ESP32-S3 on the desk | Firmware built from `m5stack/StackChan` (see `SETUP.md`) |
-| xiaozhi-esp32-server | server (`<XIAOZHI_HOST>`) | Docker — voice I/O, ports 8000 + 8003 |
-| dotty-pi | server (`<XIAOZHI_HOST>`) | Docker — the pi agent, Dotty's voice brain |
-| dotty-behaviour | server (`<XIAOZHI_HOST>`) | Docker — FastAPI: perception bus, ambient consumers, vision, greeter; port 8090 |
-| dashboard service | server (`<XIAOZHI_HOST>`) | Docker — FastAPI admin dashboard (`bridge.py`); port 8081 |
+| xiaozhi-esp32-server | server (`<DEPLOY_HOST>`) | Docker — voice I/O, ports 8000 + 8003 |
+| dotty-pi | server (`<DEPLOY_HOST>`) | Docker — the pi agent, Dotty's voice brain |
+| dotty-behaviour | server (`<DEPLOY_HOST>`) | Docker — FastAPI: perception bus, ambient consumers, vision, greeter; port 8090 |
+| dashboard service | server (`<DEPLOY_HOST>`) | Docker — FastAPI admin dashboard (`bridge.py`); port 8081 |
 | Admin workstation | any LAN box | Development / `ssh` only |
 
 ## Get it running
 
-The stack is the device plus four server-side pieces — xiaozhi-server (voice I/O), `dotty-pi` (the pi agent brain), `dotty-behaviour` (perception, ambient behaviour, and the proactive greeter), and the admin dashboard service. The four server pieces run as Docker containers on a single Docker host, alongside a local model backend ([llama-swap](./docs/cookbook/llama-swap-concurrent-models.md), or [Ollama](./docs/cookbook/run-fully-local.md) for the simpler single-binary option).
+The stack is the device plus four server-side pieces — xiaozhi-server (voice I/O), `dotty-pi` (the pi agent brain), `dotty-behaviour` (perception, ambient behaviour, and the proactive greeter), and the admin dashboard service. All four run from the root `compose.yml` on one Docker host. Application source and built-in assets are baked into their images; runtime mounts are limited to config, model weights, firmware, state, logs, secrets, memory, and temporary data.
 
 Then:
 

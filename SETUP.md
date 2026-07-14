@@ -17,22 +17,22 @@ Run these from any LAN-connected machine — should all succeed within a
 second or two:
 
 ```bash
-curl -s http://<XIAOZHI_HOST>:8003/xiaozhi/ota/
-# Expect:  OTA接口运行正常，向设备发送的websocket地址是：ws://<XIAOZHI_HOST>:8000/xiaozhi/v1/
+curl -s <XIAOZHI_PUBLIC_OTA_BASE_URL>/xiaozhi/ota/
+# Expect: OTA接口运行正常，向设备发送的websocket地址是：<XIAOZHI_PUBLIC_WS_BASE_URL>/xiaozhi/v1/
 
-curl -s http://<XIAOZHI_HOST>:8081/health
+curl -s http://<DEPLOY_HOST>:8081/health
 # Expect:  {"status":"ok", ...}
 
-curl -s http://<XIAOZHI_HOST>:8090/health
+curl -s http://<DEPLOY_HOST>:8090/health
 # Expect:  {"status":"ok", ...}
 ```
 
 If any fails, fix the backend before dealing with the robot:
 
-- OTA down → `ssh <XIAOZHI_USER>@<XIAOZHI_HOST> 'docker logs --tail 40 xiaozhi-esp32-server'`
-- Dashboard/bridge down → `ssh <XIAOZHI_USER>@<XIAOZHI_HOST> 'docker logs --tail 40 bridge'`
-- dotty-behaviour down → `ssh <XIAOZHI_USER>@<XIAOZHI_HOST> 'docker logs --tail 40 dotty-behaviour'`
-- dotty-pi down → `ssh <XIAOZHI_USER>@<XIAOZHI_HOST> 'docker logs --tail 40 dotty-pi'`
+- OTA down → `ssh <XIAOZHI_USER>@<DEPLOY_HOST> 'cd <XIAOZHI_PATH> && docker compose logs --tail 40 xiaozhi-esp32-server'`
+- Dashboard/bridge down → `ssh <XIAOZHI_USER>@<DEPLOY_HOST> 'cd <XIAOZHI_PATH> && docker compose logs --tail 40 dotty-bridge'`
+- dotty-behaviour down → `ssh <XIAOZHI_USER>@<DEPLOY_HOST> 'cd <XIAOZHI_PATH> && docker compose logs --tail 40 dotty-behaviour'`
+- dotty-pi down → `ssh <XIAOZHI_USER>@<DEPLOY_HOST> 'cd <XIAOZHI_PATH> && docker compose logs --tail 40 dotty-pi'`
 
 ---
 
@@ -78,7 +78,7 @@ Point the firmware at your xiaozhi-server for OTA. Edit
 `firmware/sdkconfig.defaults` and add (or modify) the line:
 
 ```
-CONFIG_OTA_URL="http://<XIAOZHI_HOST>:8003/xiaozhi/ota/"
+CONFIG_OTA_URL="<XIAOZHI_PUBLIC_OTA_BASE_URL>/xiaozhi/ota/"
 ```
 
 Trailing slash matters — that's the path the server exposes.
@@ -117,7 +117,7 @@ flow), use that instead.
   (or, if you left WiFi unconfigured, whatever fallback the upstream
   build offers — consult the xiaozhi-esp32 README for the current default
   behaviour)
-- It POSTs to `http://<XIAOZHI_HOST>:8003/xiaozhi/ota/`, gets back the
+- It POSTs to `<XIAOZHI_PUBLIC_OTA_BASE_URL>/xiaozhi/ota/`, gets back the
   WebSocket endpoint, and connects
 
 Tail the server logs while the device boots so you can watch the
@@ -148,7 +148,7 @@ While the freshly flashed device boots, tail the server logs in one
 terminal:
 
 ```bash
-ssh <XIAOZHI_USER>@<XIAOZHI_HOST> 'docker logs -f xiaozhi-esp32-server'
+ssh <XIAOZHI_USER>@<DEPLOY_HOST> 'cd <XIAOZHI_PATH> && docker compose logs -f xiaozhi-esp32-server'
 ```
 
 Within ~30s of reboot you should see (in order):
@@ -190,7 +190,7 @@ cold-start on first turn). Subsequent turns are faster once the model is warm.
 ## 6. Tune if needed
 
 All of these are edits to `data/.config.yaml` on the Docker host followed by
-`docker compose restart`.
+`docker compose restart xiaozhi-esp32-server`.
 
 | Complaint | Edit | File |
 |---|---|---|
@@ -228,7 +228,7 @@ Some older xiaozhi builds expose a SoftAP captive portal on first boot:
    browse to `http://192.168.4.1`.
 3. Pick your 2.4 GHz LAN SSID, enter the password.
 4. Click "Advanced Options" and paste the OTA URL:
-   `http://<XIAOZHI_HOST>:8003/xiaozhi/ota/` (trailing slash required).
+   `<XIAOZHI_PUBLIC_OTA_BASE_URL>/xiaozhi/ota/` (trailing slash required).
 5. Save. Device reboots and connects.
 
 If you have a build where this works, it's the fastest provisioning flow.
@@ -238,11 +238,11 @@ It just isn't what M5Stack ships today.
 
 ## 9. When it's working: bookmark these
 
-- **Tail voice pipeline**: `ssh <XIAOZHI_USER>@<XIAOZHI_HOST> 'docker logs -f xiaozhi-esp32-server'`
-- **Tail brain container**: `ssh <XIAOZHI_USER>@<XIAOZHI_HOST> 'docker logs -f dotty-pi'`
-- **Tail perception/behaviour**: `ssh <XIAOZHI_USER>@<XIAOZHI_HOST> 'docker logs -f dotty-behaviour'`
-- **Admin dashboard**: open `http://<XIAOZHI_HOST>:8081/ui` in a browser.
-- **Dashboard health**: `curl http://<XIAOZHI_HOST>:8081/health`
+- **Tail voice pipeline**: `ssh <XIAOZHI_USER>@<DEPLOY_HOST> 'cd <XIAOZHI_PATH> && docker compose logs -f xiaozhi-esp32-server'`
+- **Tail brain container**: `ssh <XIAOZHI_USER>@<DEPLOY_HOST> 'cd <XIAOZHI_PATH> && docker compose logs -f dotty-pi'`
+- **Tail perception/behaviour**: `ssh <XIAOZHI_USER>@<DEPLOY_HOST> 'cd <XIAOZHI_PATH> && docker compose logs -f dotty-behaviour'`
+- **Admin dashboard**: open `http://<DEPLOY_HOST>:8081/ui` in a browser.
+- **Dashboard health**: `curl http://<DEPLOY_HOST>:8081/health`
 
 ---
 
@@ -250,21 +250,18 @@ It just isn't what M5Stack ships today.
 
 The `/xiaozhi/admin/*` routes (inject-text, say, set-state, play-asset, …) let
 anyone who can reach port 8003 make the robot speak, move, and take photos.
-`make setup` generates a shared secret, `DOTTY_ADMIN_TOKEN`, into the repo-root
-`.env` — once set, xiaozhi-server rejects admin calls that don't carry it as an
+Set a shared secret, `DOTTY_ADMIN_TOKEN`, in the repo-root `.env`. Once set,
+xiaozhi-server rejects admin calls that do not carry it as an
 `X-Admin-Token` header.
 
-All callers read the **same variable**: copy the generated value into the
-deploy-dir `.env` of each sibling service —
+All callers receive the same value from the single root Compose project. After
+changing it, recreate the affected services so Compose applies the new
+environment:
 
 ```bash
-# on the Docker host, same value in each:
-/mnt/user/appdata/dotty-bridge-src/.env       # bridge dashboard
-/mnt/user/appdata/dotty-behaviour-src/.env    # behaviour consumers
-<dotty-pi deploy dir>/.env                    # voice tools (adminFetch)
+docker compose up -d xiaozhi-esp32-server dotty-pi dotty-behaviour dotty-bridge
 ```
 
-— then restart the four containers in the same window. Leaving the variable
-unset everywhere keeps the legacy permissive mode (admin routes open on the
-LAN); setting it on only some services 401s the ones missing it. See the
-"Admin API auth" section of `.env.example`.
+Xiaozhi keeps its legacy permissive mode when the variable is unset, while the
+bridge `/admin/*` API fails closed. `make setup` requires a non-placeholder
+value for the full stack. See the "Admin API auth" section of `.env.example`.

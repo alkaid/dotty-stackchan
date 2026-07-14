@@ -1,39 +1,31 @@
 {
   "providers": {
-    "ollama": {
-      "baseUrl": "http://localhost:8080/v1",
+    "sub2api": {
+      "baseUrl": "https://DOTTY_PI_BASE_URL_PLACEHOLDER/v1",
       "api": "openai-completions",
-      "apiKey": "dummy",
+      "apiKey": "DOTTY_PI_API_KEY_PLACEHOLDER",
       "compat": {
         "supportsDeveloperRole": false,
-        "supportsReasoningEffort": false
+        "supportsReasoningEffort": true
       },
       "models": [
         {
-          "id": "qwen3.5:4b",
-          "name": "Qwen3.5 4B (Unraid llama.cpp, voice set)",
+          "id": "dotty-simple",
+          "name": "Dotty simple route (sub2api)",
           "reasoning": false,
           "input": ["text"],
-          "contextWindow": 4096,
+          "contextWindow": 128000,
           "maxTokens": 2048,
           "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
         },
         {
-          "id": "qwen3.6:27b-think",
-          "name": "Qwen3.6 27B think (Unraid llama.cpp, voice set, 8K)",
+          "id": "dotty-think",
+          "name": "Dotty think_hard route (sub2api)",
           "reasoning": true,
+          "thinkingLevelMap": { "high": "high" },
           "input": ["text"],
-          "contextWindow": 8192,
+          "contextWindow": 128000,
           "maxTokens": 4096,
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
-        },
-        {
-          "id": "qwen3.6:27b",
-          "name": "Qwen3.6 27B (Unraid llama.cpp, coding set, 96K — EVICTS VOICE)",
-          "reasoning": true,
-          "input": ["text"],
-          "contextWindow": 32768,
-          "maxTokens": 16384,
           "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
         }
       ]

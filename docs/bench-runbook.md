@@ -26,8 +26,8 @@ do them in order but stop anywhere.
 
 | Issue says | Current reality |
 |---|---|
-| `systemctl restart zeroclaw-bridge` | `docker restart dotty-bridge` on the Docker host |
-| `journalctl -u zeroclaw-bridge` | `docker logs -f dotty-behaviour` (security cycle) / `docker logs -f dotty-bridge` (dashboard) |
+| `systemctl restart zeroclaw-bridge` | `docker compose restart dotty-bridge` on the Docker host |
+| `journalctl -u zeroclaw-bridge` | `docker compose logs -f dotty-behaviour` (security cycle) / `docker compose logs -f dotty-bridge` (dashboard) |
 | `/root/zeroclaw-bridge/logs/security-*.ndjson` | `/var/lib/dotty-behaviour/logs/security-YYYY-MM-DD.ndjson` **inside the `dotty-behaviour` container** (`CONVO_LOG_DIR`) |
 | `bridge/security_watch.py` consumer | `dotty-behaviour/consumers/security_cycle.py` |
 | Dashboard "LED ring mirror" card (#44) | May not exist post-cutover — record what the dashboard actually shows; if the mirror card is gone, mark those sub-checks N/A-stale, not failed |
@@ -50,11 +50,11 @@ do them in order but stop anywhere.
    (Re-plug if `/dev/ttyACM0` is missing after a power-cycle.)
 4. **Container logs** (Claude, background, over SSH to the Docker host):
    ```bash
-   docker logs -f xiaozhi-esp32-server   # voice path, admin routes, state phrases
-   docker logs -f dotty-behaviour        # perception events, consumers, security cycle
-   docker logs -f dotty-bridge           # dashboard actions
+   docker compose logs -f xiaozhi-esp32-server   # voice path, admin routes, state phrases
+   docker compose logs -f dotty-behaviour        # perception events, consumers, security cycle
+   docker compose logs -f dotty-bridge           # dashboard actions
    ```
-5. **Dashboard:** open `http://<XIAOZHI_HOST>:8081/ui` on a second screen.
+5. **Dashboard:** open `http://<DEPLOY_HOST>:8081/ui` on a second screen.
 6. **Camera:** frame the whole robot — both LED rings, the screen, and head
    travel range. Good light, but check the face detector still fires (Phase B
    needs a detectable face).
@@ -156,7 +156,7 @@ directly in this file on a branch). Every check gets `PASS` / `FAIL` /
 
 | ID | Brett does | Eyes / video | Logs (Claude) |
 |---|---|---|---|
-| L1 | With kid_mode + smart_mode ON: `docker restart dotty-bridge` on the Docker host, then speak one turn to Dotty | First turn after reconnect re-syncs both toggle pips from state files | bridge startup; pip re-assert |
+| L1 | With kid_mode + smart_mode ON: `docker compose restart dotty-bridge` on the Docker host, then speak one turn to Dotty | First turn after reconnect re-syncs both toggle pips from state files | bridge startup; pip re-assert |
 
 > **Note:** L1 overlaps open bug **#21 (bridge ↔ firmware state divergence
 > after bridge restart)**. A failure here is *expected possible* — record the

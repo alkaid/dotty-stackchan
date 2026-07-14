@@ -91,7 +91,7 @@ The same script is at `scripts/voice-install.sh` if you'd rather call
 it directly. Run `./scripts/voice-install.sh --help` for flags.
 
 After installing a Piper voice, run `make doctor` to verify the file is
-in place, then restart the server: `docker compose restart xiaozhi-server`.
+in place, then restart the server: `docker compose restart xiaozhi-esp32-server`.
 
 ## How to switch voices
 
@@ -108,6 +108,6 @@ TTS:
     config_path: /opt/xiaozhi-esp32-server/models/piper/en_US-kristin-medium.onnx.json
 ```
 
-Then `docker compose restart xiaozhi-server`.
+Then `docker compose restart xiaozhi-esp32-server`.
 
 Last verified: 2026-05-17.

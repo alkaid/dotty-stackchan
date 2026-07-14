@@ -34,7 +34,7 @@ The voice path runs through a single LLM provider — `PiVoiceLLM`, selected via
                    ├─ ASR: FunASR SenseVoiceSmall / WhisperLocal (local)
                    ├─ TTS: LocalPiper; EdgeTTS / StreamingEdgeTTS alternates
                    └─ LLM: PiVoiceLLM
-                        │  PiClient → `docker exec -i dotty-pi pi --mode rpc …`  (JSONL over stdio)
+                        │  PiHttpClient → `http://dotty-pi:8091/turn`
                         ▼
                  dotty-pi container — the pi coding agent (the brain)
                    ├─ outer loop: qwen3.5:4b on llama-swap
@@ -62,13 +62,13 @@ See `README.md` for the full visual architecture and message-flow diagrams.
 
 SSH access is via Tailscale hostnames. Discover actual Tailscale hostnames at runtime with `tailscale status`.
 
-This repo uses placeholders (`<XIAOZHI_HOST>`, `<XIAOZHI_USER>`, `<XIAOZHI_PATH>`, etc.) everywhere real values would normally appear — see the "Configuring for your environment" section of `README.md` for the full list.
+This repo uses placeholders (`<DEPLOY_HOST>`, `<XIAOZHI_USER>`, `<XIAOZHI_PATH>`, etc.) everywhere real values would normally appear — see the "Configuring for your environment" section of `README.md` for the full list.
 
 ## Key Paths
 
 - **xiaozhi-server install dir** (on the Docker host): `<XIAOZHI_PATH>` (e.g. `/opt/xiaozhi-server/`)
-- **Custom LLM provider** (on the Docker host): mounted into the xiaozhi container at `/opt/xiaozhi-server/core/providers/llm/pi_voice/`
-- **dotty-pi / dotty-behaviour / bridge.py**: each deployed as its own container on the Docker host (see their respective `README.md` files; deploy via `scripts/deploy-behaviour.sh` and `scripts/deploy-bridge-unraid.sh`)
+- **Custom LLM provider**: baked into the xiaozhi image at `/opt/xiaozhi-esp32-server/core/providers/llm/pi_voice/`
+- **dotty-pi / dotty-behaviour / bridge.py**: deployed together from the root `compose.yml` on the Docker host; remote deploy uses `scripts/deploy-stack.sh`.
 - **This project dir**: wherever you cloned `dotty-stackchan`
 
 ## Ports
@@ -83,13 +83,13 @@ This repo uses placeholders (`<XIAOZHI_HOST>`, `<XIAOZHI_USER>`, `<XIAOZHI_PATH>
 ## Config Files to Know
 
 - `.config.yaml` (repo root; deployed to the Docker host as `data/.config.yaml`) — the xiaozhi-server override config. Never overwrite wholesale on upgrades; merge keys.
-- `custom-providers/pi_voice/` — the **`PiVoiceLLM` provider** + `PiClient`, the default voice path. xiaozhi-server's LLM call is translated into a pi RPC request and run inside the `dotty-pi` container via `docker exec -i dotty-pi pi --mode rpc …`; pi owns the agent loop and tools, and only TTS-bound text streams back. Selected when `selected_module.LLM = PiVoiceLLM`. Requires the host docker socket bind-mounted into the xiaozhi container — see `custom-providers/pi_voice/README.md`.
+- `custom-providers/pi_voice/` — the **`PiVoiceLLM` provider** + `PiHttpClient`, the default voice path. xiaozhi-server's LLM call is translated into an HTTP RPC request to `dotty-pi:8091`; pi owns the agent loop and tools, and only TTS-bound text streams back. Selected when `selected_module.LLM = PiVoiceLLM`.
 - `custom-providers/edge_stream/edge_stream.py` — custom streaming TTS provider. Mounted similarly.
 - `custom-providers/openai_compat/openai_compat.py` — OpenAI-compatible LLM provider; the alternate voice backend to `PiVoiceLLM` (point it at a local llama-swap endpoint or any OpenAI-compatible API). Selected when `selected_module.LLM = OpenAICompat`.
 - `custom-providers/piper_local/piper_local.py` — local Piper TTS provider (offline alternative to EdgeTTS).
 - `custom-providers/asr/fun_local.py` — patched FunASR provider. Adds a `language` config key (upstream hardcodes `"auto"`, which mis-detects Korean/Japanese on unclear English). Mounted as a file-level override over the upstream provider.
 - `custom-providers/xiaozhi-patches/{http_server,websocket_server,portal_bridge}.py` — drop-in overrides against upstream xiaozhi-server. Add the `/xiaozhi/admin/*` admin routes (inject-text, abort, set-state, set-toggle, set-head-angles, take-photo, play-asset, songs catalogue, say) and the `active_connections` registry that lets admin routes reach a live device WS. (The `set-tier1slim-model` route and `shared_llm` singleton were removed with Tier1Slim in the 2026-05-29 alignment pass.)
-- `bridge.py` — the **admin dashboard** service (FastAPI, port 8081, served at `/ui`); runs as a container on the Docker host (build via `bridge/Dockerfile`, deploy via `scripts/deploy-bridge-unraid.sh`). Its former voice and perception-bus roles were retired in #36; the dashboard now pulls its perception/vision/audio cards from `dotty-behaviour` (#115 series). Supporting modules live under `bridge/`.
+- `bridge.py` — the **admin dashboard** service (FastAPI, port 8081, served at `/ui`); runs as a container from root `compose.yml`. Its former voice and perception-bus roles were retired in #36; the dashboard now pulls its perception/vision/audio cards from `dotty-behaviour` (#115 series). Supporting modules live under `bridge/`.
 - `dotty-pi/` — Docker image + compose for the pi agent container (the brain). See `dotty-pi/README.md`.
 - `dotty-pi-ext/` — pi extension providing the **seven** voice tools (`memory_lookup`, `remember`, `recall_person`, `remember_person`, `think_hard`, `take_photo`, `play_song`), loaded into the `dotty-pi` agent. (`recall_person`/`remember_person` were added in #53.)
 - `dotty-behaviour/` — FastAPI service (port 8090): the perception event bus, ambient consumers, vision/audio explain endpoints, the proactive greeter, and calendar context. Successor to the bridge's perception role. See `dotty-behaviour/README.md`.
@@ -109,7 +109,7 @@ The old third layer — a `_ensure_emoji_prefix` fallback in `bridge.py` — onl
 
 ## Key Directories
 
-- `custom-providers/` — all custom ASR/LLM/TTS providers (mounted into the xiaozhi container)
+- `custom-providers/` — custom ASR/LLM/TTS providers and xiaozhi patches baked into images by Dockerfiles
 - `bridge/` — supporting modules for the `bridge.py` dashboard service (dashboard UI, templates, static assets, CSRF, metrics)
 - `dotty-pi/`, `dotty-pi-ext/`, `dotty-behaviour/` — the pi agent container, its voice-tool extension, and the perception/greeter service (see Config Files above)
 - `firmware/` — StackChan firmware patches, remote config, and server-side OTA assets
@@ -120,7 +120,7 @@ The old third layer — a `_ensure_emoji_prefix` fallback in `bridge.py` — onl
 
 Run `make help` for the full list. Key targets:
 
-- `make setup` — interactive first-run wizard (substitutes placeholders, fetches models, starts containers)
+- `make setup` — validate `.env`, render config, fetch models, and build/start containers
 - `make doctor` — health checks on config, models, and services
 - `make fetch-models` — download SenseVoiceSmall + Piper voice models
 - `make up` / `make down` / `make logs` / `make status` — docker compose shortcuts
@@ -129,10 +129,10 @@ Run `make help` for the full list. Key targets:
 
 - **Change TTS voice**: Edit `data/.config.yaml` on the Docker host. For the default `LocalPiper`, swap the `voice` + `model_path` + `config_path` keys (download a new `.onnx` / `.onnx.json` pair into `models/piper/`). For `EdgeTTS` / `StreamingEdgeTTS` alternates, change `TTS.EdgeTTS.voice` / `TTS.StreamingEdgeTTS.voice` and switch `selected_module.TTS`. Restart container.
 - **Change system prompt**: Edit `data/.config.yaml` on the Docker host, top-level `prompt:` block. Restart container.
-- **Check logs**: `ssh <XIAOZHI_USER>@<XIAOZHI_HOST> 'docker logs -f xiaozhi-esp32-server'`
-- **Restart pipeline**: `ssh <XIAOZHI_USER>@<XIAOZHI_HOST> 'cd <XIAOZHI_PATH> && docker compose restart'`
-- **Test the dashboard service**: `curl http://<XIAOZHI_HOST>:8081/health`
-- **Test dotty-behaviour**: `curl http://<XIAOZHI_HOST>:8090/health`
+- **Check logs**: `ssh <XIAOZHI_USER>@<DEPLOY_HOST> 'cd <XIAOZHI_PATH> && docker compose logs -f xiaozhi-esp32-server'`
+- **Restart pipeline**: `ssh <XIAOZHI_USER>@<DEPLOY_HOST> 'cd <XIAOZHI_PATH> && docker compose restart'`
+- **Test the dashboard service**: `curl http://<DEPLOY_HOST>:8081/health`
+- **Test dotty-behaviour**: `curl http://<DEPLOY_HOST>:8090/health`
 
 ## Firmware iteration
 

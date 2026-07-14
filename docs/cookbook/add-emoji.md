@@ -9,24 +9,24 @@ The robot's face is driven by the leading emoji in each LLM reply.
 
 ## 1. Update the allowed emoji lists
 
-**`bridge.py`** -- edit `ALLOWED_EMOJIS`:
+**`custom-providers/textUtils.py`** -- edit `ALLOWED_EMOJIS`:
 
 ```python
 ALLOWED_EMOJIS = ("😊", "😆", "😢", "😮", "🤔", "😠", "😐", "😍", "😴", "🥳")
 ```
 
-**`custom-providers/openai_compat/openai_compat.py`** -- add the same
-emoji (use the `\U` escape form, e.g. `"\U0001f973"  # 🥳`).
+Both `PiVoiceLLM` and `OpenAICompat` import this shared list.
 
 ## 2. Update the suffix prompt (rule 2)
 
-In `bridge.py`, add the emoji to rule 2 in `_BASE_SUFFIX`:
+In `custom-providers/textUtils.py`, add the emoji to rule 2 in `_BASE_SUFFIX`:
 
 ```
 2. First character MUST be one of: 😊 😆 😢 😮 🤔 😠 😐 😍 😴 🥳
 ```
 
-Also update the `prompt:` block in `.config.yaml` if it lists the set.
+Also update `personas/dotty_voice.md` and the `prompt:` block in
+`data/.config.yaml` if they list the set.
 
 ## 3. Check firmware support
 
@@ -38,8 +38,7 @@ See [protocols.md](../protocols.md) and the upstream
 ## 4. Restart
 
 ```bash
-docker compose restart bridge              # bridge container (if bridge.py changed)
-docker compose restart xiaozhi-server      # xiaozhi container (if config changed)
+docker compose up -d --build xiaozhi-esp32-server dotty-pi dotty-bridge
 ```
 
 Current set: 😊 smile, 😆 laugh, 😢 sad, 😮 surprise, 🤔 thinking,
