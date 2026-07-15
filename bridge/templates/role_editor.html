@@ -1,0 +1,82 @@
+{% if error and not state %}
+<div class="text-sm text-error">{{ error }}</div>
+{% elif is_new %}
+<form hx-post="/ui/actions/roles/create" hx-target="#role-manager"
+      hx-swap="outerHTML" hx-disabled-elt="find button, find input, find select, find textarea"
+      class="flex flex-col gap-3">
+  <label class="form-control w-full">
+    <span class="label-text mb-1">Name</span>
+    <input type="text" name="name" class="input input-bordered w-full"
+           value="{{ selected.name if selected else '' }}" maxlength="80" required>
+  </label>
+  <label class="form-control w-full">
+    <span class="label-text mb-1">Voice</span>
+    <select name="voice_id" class="select select-bordered w-full" required>
+      {% for voice in voices %}
+      <option value="{{ voice.id }}"
+              {% if selected and voice.id == selected.voice_id %}selected{% endif %}>
+        {{ voice.name }} · {{ "ChatTTS" if voice.provider == "chattts" else "EdgeTTS" }}
+      </option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="form-control w-full">
+    <span class="label-text mb-1">System prompt</span>
+    <textarea name="prompt" class="textarea textarea-bordered w-full font-mono leading-relaxed"
+              rows="14" maxlength="32000" required>{{ selected.prompt if selected else '' }}</textarea>
+  </label>
+  <div class="modal-action mt-1">
+    <button type="submit" class="btn btn-primary">Create</button>
+  </div>
+</form>
+{% elif selected %}
+<form hx-post="/ui/actions/roles/update" hx-target="#role-manager"
+      hx-swap="outerHTML" hx-disabled-elt="find button, find input, find select, find textarea"
+      class="flex flex-col gap-3">
+  <input type="hidden" name="role_id" value="{{ selected.id }}">
+  <label class="form-control w-full">
+    <span class="label-text mb-1">Name</span>
+    <input type="text" name="name" class="input input-bordered w-full"
+           value="{{ selected.name }}" maxlength="80" required>
+  </label>
+  <label class="form-control w-full">
+    <span class="label-text mb-1">Voice</span>
+    <select name="voice_id" class="select select-bordered w-full" required>
+      {% for voice in voices %}
+      <option value="{{ voice.id }}" {% if voice.id == selected.voice_id %}selected{% endif %}>
+        {{ voice.name }} · {{ "ChatTTS" if voice.provider == "chattts" else "EdgeTTS" }}
+      </option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="form-control w-full">
+    <span class="label-text mb-1">System prompt</span>
+    <textarea name="prompt" class="textarea textarea-bordered w-full font-mono leading-relaxed"
+              rows="14" maxlength="32000" required>{{ selected.prompt }}</textarea>
+  </label>
+  <div class="modal-action mt-1">
+    <button type="submit" class="btn btn-primary">Save</button>
+  </div>
+</form>
+
+<div class="flex items-center justify-between gap-3 border-t border-base-300 mt-4 pt-4">
+  <form hx-post="/ui/actions/roles/activate" hx-target="#role-manager"
+        hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="role_id" value="{{ selected.id }}">
+    <input type="hidden" name="return_to" value="manager">
+    <button type="submit" class="btn btn-sm btn-success"
+            {% if selected.id == state.active_role_id %}disabled{% endif %}>
+      {{ "Active" if selected.id == state.active_role_id else "Activate" }}
+    </button>
+  </form>
+  <form hx-post="/ui/actions/roles/delete" hx-target="#role-manager"
+        hx-swap="outerHTML" hx-disabled-elt="find button"
+        hx-confirm="Delete this role?">
+    <input type="hidden" name="role_id" value="{{ selected.id }}">
+    <button type="submit" class="btn btn-sm btn-error btn-outline"
+            {% if selected.id == state.active_role_id or state.roles|length <= 1 %}disabled{% endif %}>
+      Delete
+    </button>
+  </form>
+</div>
+{% endif %}

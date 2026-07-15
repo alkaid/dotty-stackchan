@@ -73,7 +73,6 @@ DOTTY_PI_BASE_URL=https://DOTTY_PI_BASE_URL_PLACEHOLDER/v1
 DOTTY_PI_API_KEY=sk-...
 DOTTY_PI_PROVIDER=sub2api
 DOTTY_PI_MODEL=dotty-simple
-DOTTY_PI_SYSTEM_PROMPT_FILE=/opt/dotty-pi/personas/dotty_voice.md
 DOTTY_PI_SIMPLE_REASONING=false
 DOTTY_PI_THINK_REASONING=true
 DOTTY_PI_THINK_REASONING_EFFORT=high
@@ -99,8 +98,10 @@ DOTTY_PI_MODEL=dotty-simple
 
 The extension dependencies are built in a separate image stage so native
 modules can use their Node 22 prebuilt binaries without shipping a compiler.
-The image also bakes in `personas/` and passes the selected file as pi's
-system prompt. Pi starts with `--no-builtin-tools`; voice turns can use only
+The image bakes in `personas/default.md` as the first-Role fallback. The RPC
+server reads the active Role from the shared `roles.json`; Kid and Smart mode
+state do not select or modify the Role prompt.
+Pi starts with `--no-builtin-tools`; voice turns can use only
 the tools registered by `dotty-pi-ext`, not shell or file-editing tools.
 
 See [`../docs/deployment.md`](../docs/deployment.md) for the full runbook and

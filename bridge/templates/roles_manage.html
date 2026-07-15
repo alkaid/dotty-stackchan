@@ -1,0 +1,43 @@
+<div id="role-manager">
+  <div class="sticky top-0 z-10 flex items-center justify-between gap-3 mb-4 py-1 bg-base-100">
+    <h3 class="text-lg font-semibold">Roles</h3>
+    <button type="button" class="btn btn-sm btn-circle btn-ghost"
+            aria-label="Close roles" title="Close"
+            onclick="document.getElementById('role-modal').close()">&times;</button>
+  </div>
+
+  {% if error %}
+  <div class="alert alert-error dotty-alert mb-3" role="alert"><span>{{ error }}</span></div>
+  {% endif %}
+  {% if saved %}
+  <div class="alert alert-success dotty-alert mb-3" role="status"><span>Saved.</span></div>
+  {% endif %}
+
+  {% if state %}
+  <div class="flex gap-2 mb-4">
+    <form class="flex-1" hx-get="/ui/roles/editor" hx-target="#role-editor"
+          hx-swap="innerHTML" hx-disabled-elt="find select">
+      <select name="role_id" aria-label="Edit role"
+              class="select select-bordered w-full"
+              onchange="this.form.requestSubmit()">
+        {% for role in state.roles %}
+        <option value="{{ role.id }}"
+                {% if selected and role.id == selected.id and not is_new %}selected{% endif %}>
+          {{ role.name }}{% if role.id == state.active_role_id %} (active){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </form>
+    <button type="button" class="btn btn-outline" aria-label="New role" title="New role"
+            hx-get="/ui/roles/editor?new=true" hx-target="#role-editor"
+            hx-swap="innerHTML">+</button>
+  </div>
+
+  <div id="role-editor">
+    {% include "role_editor.html" %}
+  </div>
+  {% endif %}
+</div>
+{% if saved %}
+<script>window.dispatchEvent(new CustomEvent('dotty-refresh'));</script>
+{% endif %}

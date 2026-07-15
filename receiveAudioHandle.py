@@ -63,8 +63,8 @@ def _read_kid_mode_state() -> bool:
 
 def _read_smart_mode_state() -> bool:
     """smart_mode is dashboard-gated and persists across reboot via the state
-    file. The bridge owns the model swap on toggle; this side only reads the
-    bit so `_sync_toggles_once` can paint the firmware pip on reconnect."""
+    file. This side reads it so `_sync_toggles_once` can paint the firmware
+    pip on reconnect."""
     try:
         with open(_SMART_MODE_STATE_FILE, "r") as f:
             v = f.read().strip().lower()

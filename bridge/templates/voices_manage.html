@@ -1,0 +1,51 @@
+<div id="voice-manager">
+  <div class="sticky top-0 z-10 flex items-center justify-between gap-3 mb-4 py-1 bg-base-100">
+    <h3 class="text-lg font-semibold">Voices</h3>
+    <button type="button" class="btn btn-sm btn-circle btn-ghost"
+            aria-label="Close voices" title="Close"
+            onclick="document.getElementById('voice-modal').close()">&times;</button>
+  </div>
+
+  {% if error %}
+  <div class="alert alert-error dotty-alert mb-3" role="alert"><span>{{ error }}</span></div>
+  {% endif %}
+  {% if saved %}
+  <div class="alert alert-success dotty-alert mb-3" role="status"><span>Saved.</span></div>
+  {% endif %}
+
+  {% if state %}
+  <div class="flex gap-2 mb-4">
+    <form class="flex-1" hx-get="/ui/voices/editor" hx-target="#voice-editor"
+          hx-swap="innerHTML" hx-disabled-elt="find select">
+      <select name="voice_id" aria-label="Edit voice"
+              class="select select-bordered w-full"
+              onchange="this.form.requestSubmit()">
+        {% for voice in state.voices %}
+        <option value="{{ voice.id }}"
+                {% if selected and voice.id == selected.id and not is_new %}selected{% endif %}>
+          {{ voice.name }} · {{ "ChatTTS" if voice.provider == "chattts" else "EdgeTTS" }}
+        </option>
+        {% endfor %}
+      </select>
+    </form>
+    <button type="button" class="btn btn-outline" aria-label="New voice" title="New voice"
+            hx-get="/ui/voices/editor?new=true" hx-target="#voice-editor"
+            hx-swap="innerHTML">+</button>
+  </div>
+
+  <div id="voice-editor">
+    {% include "voice_editor.html" %}
+  </div>
+  {% endif %}
+</div>
+<script>
+window.dottyVoiceProviderChanged = function (select) {
+  var root = select.closest('[data-voice-editor]');
+  root.querySelectorAll('[data-provider-fields]').forEach(function (panel) {
+    panel.classList.toggle('hidden', panel.dataset.providerFields !== select.value);
+  });
+};
+</script>
+{% if saved %}
+<script>window.dispatchEvent(new CustomEvent('dotty-refresh'));</script>
+{% endif %}

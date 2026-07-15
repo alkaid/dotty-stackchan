@@ -1,0 +1,129 @@
+{% if error and not state %}
+<div class="text-sm text-error">{{ error }}</div>
+{% else %}
+{% set provider = selected.provider if selected else "chattts" %}
+{% set config = selected.config if selected else {} %}
+<div data-voice-editor>
+  <form id="voice-profile-form" hx-post="/ui/actions/voices/save"
+        hx-target="#voice-manager" hx-swap="outerHTML"
+        hx-disabled-elt="find button, find input, find select, find textarea"
+        class="flex flex-col gap-3">
+    <input type="hidden" name="voice_id" value="{{ selected.id if selected else '' }}">
+    <label class="form-control w-full">
+      <span class="label-text mb-1">Name</span>
+      <input type="text" name="name" class="input input-bordered w-full"
+             value="{{ selected.name if selected else '' }}" maxlength="80" required>
+    </label>
+    <label class="form-control w-full">
+      <span class="label-text mb-1">Provider</span>
+      <select name="provider" class="select select-bordered w-full"
+              onchange="dottyVoiceProviderChanged(this)">
+        <option value="chattts" {% if provider == "chattts" %}selected{% endif %}>ChatTTS</option>
+        <option value="edge" {% if provider == "edge" %}selected{% endif %}>EdgeTTS</option>
+      </select>
+    </label>
+
+    <div data-provider-fields="chattts"
+         class="grid grid-cols-1 sm:grid-cols-2 gap-3 {% if provider != 'chattts' %}hidden{% endif %}">
+      <label class="form-control">
+        <span class="label-text mb-1">Seed</span>
+        <input type="number" name="seed" class="input input-bordered" min="0" max="2147483647"
+               value="{{ config.seed|default(42) }}" required>
+      </label>
+      <label class="form-control">
+        <span class="label-text mb-1">Temperature</span>
+        <input type="number" name="temperature" class="input input-bordered" min="0.01" max="2" step="0.01"
+               value="{{ config.temperature|default(0.3) }}" required>
+      </label>
+      <label class="form-control">
+        <span class="label-text mb-1">Top P</span>
+        <input type="number" name="top_p" class="input input-bordered" min="0.01" max="1" step="0.01"
+               value="{{ config.top_p|default(0.7) }}" required>
+      </label>
+      <label class="form-control">
+        <span class="label-text mb-1">Top K</span>
+        <input type="number" name="top_k" class="input input-bordered" min="1" max="100"
+               value="{{ config.top_k|default(20) }}" required>
+      </label>
+      <label class="form-control sm:col-span-2">
+        <span class="label-text mb-1">Refine prompt</span>
+        <input type="text" name="refine_prompt" class="input input-bordered font-mono"
+               value="{{ config.refine_prompt|default('[oral_2][laugh_0][break_4]') }}" maxlength="300" required>
+      </label>
+      <label class="form-control sm:col-span-2">
+        <span class="label-text mb-1">Code prompt</span>
+        <input type="text" name="code_prompt" class="input input-bordered font-mono"
+               value="{{ config.code_prompt|default('[speed_5]') }}" maxlength="300" required>
+      </label>
+    </div>
+
+    <div data-provider-fields="edge"
+         class="grid grid-cols-1 sm:grid-cols-3 gap-3 {% if provider != 'edge' %}hidden{% endif %}">
+      <label class="form-control sm:col-span-3">
+        <span class="label-text mb-1">Edge voice</span>
+        <input type="text" name="edge_voice" class="input input-bordered font-mono"
+               value="{{ config.voice|default('en-AU-WilliamNeural') }}"
+               list="edge-voice-options" maxlength="100" required>
+        <datalist id="edge-voice-options">
+          <option value="en-AU-NatashaNeural"></option>
+          <option value="en-AU-WilliamNeural"></option>
+          <option value="en-GB-MaisieNeural"></option>
+          <option value="en-GB-SoniaNeural"></option>
+          <option value="en-US-AriaNeural"></option>
+          <option value="en-US-JennyNeural"></option>
+          <option value="zh-CN-XiaoxiaoNeural"></option>
+          <option value="zh-CN-XiaoyiNeural"></option>
+          <option value="zh-CN-YunjianNeural"></option>
+          <option value="zh-CN-YunxiNeural"></option>
+          <option value="zh-HK-HiuMaanNeural"></option>
+        </datalist>
+      </label>
+      <label class="form-control">
+        <span class="label-text mb-1">Rate</span>
+        <input type="text" name="edge_rate" class="input input-bordered font-mono"
+               value="{{ config.rate|default('+0%') }}" maxlength="8" required>
+      </label>
+      <label class="form-control">
+        <span class="label-text mb-1">Volume</span>
+        <input type="text" name="edge_volume" class="input input-bordered font-mono"
+               value="{{ config.volume|default('+0%') }}" maxlength="8" required>
+      </label>
+      <label class="form-control">
+        <span class="label-text mb-1">Pitch</span>
+        <input type="text" name="edge_pitch" class="input input-bordered font-mono"
+               value="{{ config.pitch|default('+0Hz') }}" maxlength="10" required>
+      </label>
+    </div>
+
+    <label class="form-control w-full border-t border-base-300 pt-3 mt-1">
+      <span class="label-text mb-1">Preview text</span>
+      <textarea name="preview_text" class="textarea textarea-bordered w-full"
+                rows="3" maxlength="500" required>Hello! This is how I sound with this voice.</textarea>
+    </label>
+    <div id="voice-preview-result" class="empty:hidden"></div>
+
+    <div class="modal-action mt-1 justify-between">
+      <button type="button" class="btn btn-outline"
+              hx-post="/ui/actions/voices/preview" hx-include="closest form"
+              hx-target="#voice-preview-result" hx-swap="innerHTML">
+        Preview
+      </button>
+      <button type="submit" class="btn btn-primary">{{ "Create" if is_new else "Save" }}</button>
+    </div>
+  </form>
+
+  {% if selected and not is_new %}
+  <div class="flex items-center justify-between gap-3 border-t border-base-300 mt-4 pt-4">
+    <div class="text-xs text-base-content/50">
+      {% if used_by %}Used by {{ used_by|join(', ') }}{% else %}Not assigned to a role{% endif %}
+    </div>
+    <form hx-post="/ui/actions/voices/delete" hx-target="#voice-manager"
+          hx-swap="outerHTML" hx-disabled-elt="find button" hx-confirm="Delete this voice?">
+      <input type="hidden" name="voice_id" value="{{ selected.id }}">
+      <button type="submit" class="btn btn-sm btn-error btn-outline"
+              {% if used_by or state.voices|length <= 1 %}disabled{% endif %}>Delete</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endif %}

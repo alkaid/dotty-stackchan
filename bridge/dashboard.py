@@ -29,6 +29,22 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 
 from bridge.runtime_config import CONFIG_KEYS, effective_config, write_overrides
+from bridge.roles import (
+    RoleError,
+    activate_role,
+    create_role,
+    delete_role,
+    read_roles,
+    update_role,
+)
+from bridge.voices import (
+    VoiceError,
+    clean_voice,
+    create_voice,
+    delete_voice,
+    read_voices,
+    update_voice,
+)
 
 log = logging.getLogger("dashboard")
 
@@ -58,6 +74,7 @@ _state: dict[str, Any] = {
     "memory_redact": None,
     "sound_balance_getter": None,
     "vision_failures_getter": None,
+    "voice_preview": None,
 }
 
 
@@ -78,7 +95,8 @@ def configure(*, send_message: Any = None, vision_cache_getter: Any = None,
               memory_approve: Any = None,
               memory_redact: Any = None,
               sound_balance_getter: Any = None,
-              vision_failures_getter: Any = None) -> None:
+              vision_failures_getter: Any = None,
+              voice_preview: Any = None) -> None:
     """Register bridge state with the dashboard. Idempotent."""
     if send_message is not None:
         _state["send_message"] = send_message
@@ -126,6 +144,8 @@ def configure(*, send_message: Any = None, vision_cache_getter: Any = None,
         _state["sound_balance_getter"] = sound_balance_getter
     if vision_failures_getter is not None:
         _state["vision_failures_getter"] = vision_failures_getter
+    if voice_preview is not None:
+        _state["voice_preview"] = voice_preview
 
 
 def _vision_cache_snapshot() -> dict[str, dict]:
@@ -537,6 +557,478 @@ async def configuration_set(
         log.warning("runtime configuration save failed: %s", exc)
         return _configuration_response(request, values, error=str(exc))
     return _configuration_response(request, values, saved=True)
+
+
+def _find_role(state: dict[str, Any], role_id: str) -> dict[str, str] | None:
+    return next((role for role in state["roles"] if role["id"] == role_id), None)
+
+
+def _role_card_response(
+    request: Request,
+    state: dict[str, Any],
+    *,
+    error: str | None = None,
+    refresh: bool = False,
+) -> Any:
+    response = templates.TemplateResponse(
+        request,
+        "role_card.html",
+        {"state": state, "error": error},
+    )
+    if refresh:
+        response.headers["HX-Trigger"] = "dotty-refresh"
+    return response
+
+
+def _role_manager_response(
+    request: Request,
+    state: dict[str, Any],
+    *,
+    selected_id: str | None = None,
+    draft: dict[str, str] | None = None,
+    is_new: bool = False,
+    saved: bool = False,
+    error: str | None = None,
+) -> Any:
+    selected_id = selected_id or state["active_role_id"]
+    selected = draft or _find_role(state, selected_id)
+    voices = read_voices()["voices"]
+    return templates.TemplateResponse(
+        request,
+        "roles_manage.html",
+        {
+            "state": state,
+            "selected": selected,
+            "voices": voices,
+            "is_new": is_new,
+            "saved": saved,
+            "error": error,
+        },
+    )
+
+
+@router.get("/roles", response_class=HTMLResponse, include_in_schema=False)
+async def roles_partial(request: Request) -> Any:
+    try:
+        return _role_card_response(request, read_roles())
+    except RoleError as exc:
+        return templates.TemplateResponse(
+            request, "role_card.html", {"state": None, "error": str(exc)},
+        )
+
+
+@router.get("/roles/manage", response_class=HTMLResponse, include_in_schema=False)
+async def roles_manage(request: Request) -> Any:
+    try:
+        return _role_manager_response(request, read_roles())
+    except (RoleError, VoiceError) as exc:
+        return templates.TemplateResponse(
+            request,
+            "roles_manage.html",
+            {"state": None, "selected": None, "is_new": False,
+             "voices": [], "saved": False, "error": str(exc)},
+        )
+
+
+@router.get("/roles/editor", response_class=HTMLResponse, include_in_schema=False)
+async def role_editor(
+    request: Request, role_id: str = "", new: bool = False,
+) -> Any:
+    try:
+        state = read_roles()
+        voices = read_voices()["voices"]
+        selected = None if new else _find_role(state, role_id)
+        if not new and selected is None:
+            raise RoleError("Role not found")
+        return templates.TemplateResponse(
+            request,
+            "role_editor.html",
+            {"state": state, "selected": selected, "is_new": new,
+             "voices": voices, "error": None},
+        )
+    except (RoleError, VoiceError) as exc:
+        return templates.TemplateResponse(
+            request,
+            "role_editor.html",
+            {"state": None, "selected": None, "is_new": new,
+             "voices": [], "error": str(exc)},
+        )
+
+
+@router.post(
+    "/actions/roles/create", response_class=HTMLResponse, include_in_schema=False,
+)
+async def role_create(
+    request: Request,
+    name: str = Form(...),
+    prompt: str = Form(...),
+    voice_id: str = Form(...),
+) -> Any:
+    try:
+        if not any(voice["id"] == voice_id for voice in read_voices()["voices"]):
+            raise RoleError("Voice not found")
+        state = create_role(name, prompt, voice_id)
+        return _role_manager_response(
+            request, state, selected_id=state["roles"][-1]["id"], saved=True,
+        )
+    except (RoleError, VoiceError) as exc:
+        state = read_roles()
+        return _role_manager_response(
+            request, state,
+            draft={"id": "", "name": name, "prompt": prompt,
+                   "voice_id": voice_id},
+            is_new=True, error=str(exc),
+        )
+
+
+@router.post(
+    "/actions/roles/update", response_class=HTMLResponse, include_in_schema=False,
+)
+async def role_update(
+    request: Request,
+    role_id: str = Form(...),
+    name: str = Form(...),
+    prompt: str = Form(...),
+    voice_id: str = Form(...),
+) -> Any:
+    try:
+        if not any(voice["id"] == voice_id for voice in read_voices()["voices"]):
+            raise RoleError("Voice not found")
+        state = update_role(role_id, name, prompt, voice_id)
+        return _role_manager_response(
+            request, state, selected_id=role_id, saved=True,
+        )
+    except (RoleError, VoiceError) as exc:
+        state = read_roles()
+        return _role_manager_response(
+            request, state, selected_id=role_id,
+            draft={"id": role_id, "name": name, "prompt": prompt,
+                   "voice_id": voice_id},
+            error=str(exc),
+        )
+
+
+@router.post(
+    "/actions/roles/activate", response_class=HTMLResponse, include_in_schema=False,
+)
+async def role_activate(
+    request: Request,
+    role_id: str = Form(...),
+    return_to: str = Form("card"),
+) -> Any:
+    try:
+        state = activate_role(role_id)
+        if return_to == "manager":
+            return _role_manager_response(
+                request, state, selected_id=role_id, saved=True,
+            )
+        return _role_card_response(request, state, refresh=True)
+    except (RoleError, VoiceError) as exc:
+        state = read_roles()
+        if return_to == "manager":
+            return _role_manager_response(
+                request, state, selected_id=role_id, error=str(exc),
+            )
+        return _role_card_response(request, state, error=str(exc))
+
+
+@router.post(
+    "/actions/roles/delete", response_class=HTMLResponse, include_in_schema=False,
+)
+async def role_delete(request: Request, role_id: str = Form(...)) -> Any:
+    try:
+        state = delete_role(role_id)
+        return _role_manager_response(request, state, saved=True)
+    except (RoleError, VoiceError) as exc:
+        state = read_roles()
+        return _role_manager_response(
+            request, state, selected_id=role_id, error=str(exc),
+        )
+
+
+def _find_voice(state: dict[str, Any], voice_id: str) -> dict[str, Any] | None:
+    return next((voice for voice in state["voices"] if voice["id"] == voice_id), None)
+
+
+def _voice_usage(voice_id: str) -> list[str]:
+    state = read_roles()
+    return [role["name"] for role in state["roles"] if role["voice_id"] == voice_id]
+
+
+def _voice_card_response(
+    request: Request,
+    state: dict[str, Any],
+    *,
+    error: str | None = None,
+) -> Any:
+    roles = read_roles()
+    active_role = _find_role(roles, roles["active_role_id"])
+    active_voice = (
+        _find_voice(state, active_role["voice_id"]) if active_role else None
+    ) or state["voices"][0]
+    return templates.TemplateResponse(
+        request,
+        "voice_card.html",
+        {"state": state, "active_voice": active_voice, "error": error},
+    )
+
+
+def _voice_manager_response(
+    request: Request,
+    state: dict[str, Any],
+    *,
+    selected_id: str | None = None,
+    draft: dict[str, Any] | None = None,
+    is_new: bool = False,
+    saved: bool = False,
+    error: str | None = None,
+) -> Any:
+    selected = draft or _find_voice(state, selected_id or state["voices"][0]["id"])
+    return templates.TemplateResponse(
+        request,
+        "voices_manage.html",
+        {
+            "state": state,
+            "selected": selected,
+            "is_new": is_new,
+            "saved": saved,
+            "error": error,
+            "used_by": _voice_usage(selected["id"]) if selected and selected.get("id") else [],
+        },
+    )
+
+
+def _voice_config_from_form(
+    provider: str,
+    *,
+    seed: str,
+    temperature: str,
+    top_p: str,
+    top_k: str,
+    refine_prompt: str,
+    code_prompt: str,
+    edge_voice: str,
+    edge_rate: str,
+    edge_volume: str,
+    edge_pitch: str,
+) -> dict[str, Any]:
+    if provider == "edge":
+        return {
+            "voice": edge_voice,
+            "rate": edge_rate,
+            "volume": edge_volume,
+            "pitch": edge_pitch,
+        }
+    return {
+        "seed": seed,
+        "temperature": temperature,
+        "top_p": top_p,
+        "top_k": top_k,
+        "refine_prompt": refine_prompt,
+        "code_prompt": code_prompt,
+    }
+
+
+@router.get("/voices", response_class=HTMLResponse, include_in_schema=False)
+async def voices_partial(request: Request) -> Any:
+    try:
+        return _voice_card_response(request, read_voices())
+    except (RoleError, VoiceError) as exc:
+        return templates.TemplateResponse(
+            request,
+            "voice_card.html",
+            {"state": None, "active_voice": None, "error": str(exc)},
+        )
+
+
+@router.get("/voices/manage", response_class=HTMLResponse, include_in_schema=False)
+async def voices_manage(request: Request) -> Any:
+    try:
+        return _voice_manager_response(request, read_voices())
+    except (RoleError, VoiceError) as exc:
+        return templates.TemplateResponse(
+            request,
+            "voices_manage.html",
+            {"state": None, "selected": None, "is_new": False,
+             "saved": False, "used_by": [], "error": str(exc)},
+        )
+
+
+@router.get("/voices/editor", response_class=HTMLResponse, include_in_schema=False)
+async def voice_editor(
+    request: Request, voice_id: str = "", new: bool = False,
+) -> Any:
+    try:
+        state = read_voices()
+        selected = None if new else _find_voice(state, voice_id)
+        if not new and selected is None:
+            raise VoiceError("Voice not found")
+        return templates.TemplateResponse(
+            request,
+            "voice_editor.html",
+            {"state": state, "selected": selected, "is_new": new,
+             "used_by": _voice_usage(voice_id) if selected else [],
+             "error": None},
+        )
+    except (RoleError, VoiceError) as exc:
+        return templates.TemplateResponse(
+            request,
+            "voice_editor.html",
+            {"state": None, "selected": None, "is_new": new,
+             "used_by": [], "error": str(exc)},
+        )
+
+
+def _voice_profile_from_form(
+    *,
+    voice_id: str,
+    name: str,
+    provider: str,
+    seed: str,
+    temperature: str,
+    top_p: str,
+    top_k: str,
+    refine_prompt: str,
+    code_prompt: str,
+    edge_voice: str,
+    edge_rate: str,
+    edge_volume: str,
+    edge_pitch: str,
+) -> dict[str, Any]:
+    return clean_voice({
+        "id": voice_id or "preview",
+        "name": name,
+        "provider": provider,
+        "config": _voice_config_from_form(
+            provider,
+            seed=seed,
+            temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
+            refine_prompt=refine_prompt,
+            code_prompt=code_prompt,
+            edge_voice=edge_voice,
+            edge_rate=edge_rate,
+            edge_volume=edge_volume,
+            edge_pitch=edge_pitch,
+        ),
+    })
+
+
+@router.post(
+    "/actions/voices/save", response_class=HTMLResponse, include_in_schema=False,
+)
+async def voice_save(
+    request: Request,
+    voice_id: str = Form(""),
+    name: str = Form(...),
+    provider: str = Form(...),
+    seed: str = Form("42"),
+    temperature: str = Form("0.3"),
+    top_p: str = Form("0.7"),
+    top_k: str = Form("20"),
+    refine_prompt: str = Form("[oral_2][laugh_0][break_4]"),
+    code_prompt: str = Form("[speed_5]"),
+    edge_voice: str = Form("en-AU-WilliamNeural"),
+    edge_rate: str = Form("+0%"),
+    edge_volume: str = Form("+0%"),
+    edge_pitch: str = Form("+0Hz"),
+) -> Any:
+    raw_config = _voice_config_from_form(
+        provider, seed=seed, temperature=temperature, top_p=top_p, top_k=top_k,
+        refine_prompt=refine_prompt, code_prompt=code_prompt,
+        edge_voice=edge_voice, edge_rate=edge_rate, edge_volume=edge_volume,
+        edge_pitch=edge_pitch,
+    )
+    try:
+        if voice_id:
+            state = update_voice(voice_id, name, provider, raw_config)
+            selected_id = voice_id
+        else:
+            state = create_voice(name, provider, raw_config)
+            selected_id = state["voices"][-1]["id"]
+        return _voice_manager_response(
+            request, state, selected_id=selected_id, saved=True,
+        )
+    except (RoleError, VoiceError) as exc:
+        state = read_voices()
+        draft = {
+            "id": voice_id,
+            "name": name,
+            "provider": provider,
+            "config": raw_config,
+        }
+        return _voice_manager_response(
+            request, state, draft=draft, selected_id=voice_id,
+            is_new=not bool(voice_id), error=str(exc),
+        )
+
+
+@router.post(
+    "/actions/voices/delete", response_class=HTMLResponse, include_in_schema=False,
+)
+async def voice_delete(request: Request, voice_id: str = Form(...)) -> Any:
+    try:
+        used_by = _voice_usage(voice_id)
+        if used_by:
+            raise VoiceError(f"Voice is used by: {', '.join(used_by)}")
+        state = delete_voice(voice_id)
+        return _voice_manager_response(request, state, saved=True)
+    except (RoleError, VoiceError) as exc:
+        state = read_voices()
+        return _voice_manager_response(
+            request, state, selected_id=voice_id, error=str(exc),
+        )
+
+
+@router.post(
+    "/actions/voices/preview", response_class=HTMLResponse, include_in_schema=False,
+)
+async def voice_preview(
+    request: Request,
+    preview_text: str = Form(...),
+    voice_id: str = Form(""),
+    name: str = Form(...),
+    provider: str = Form(...),
+    seed: str = Form("42"),
+    temperature: str = Form("0.3"),
+    top_p: str = Form("0.7"),
+    top_k: str = Form("20"),
+    refine_prompt: str = Form("[oral_2][laugh_0][break_4]"),
+    code_prompt: str = Form("[speed_5]"),
+    edge_voice: str = Form("en-AU-WilliamNeural"),
+    edge_rate: str = Form("+0%"),
+    edge_volume: str = Form("+0%"),
+    edge_pitch: str = Form("+0Hz"),
+) -> Any:
+    text = " ".join(re.sub(r"[\x00-\x1f\x7f]+", " ", preview_text).split())
+    try:
+        if not text or len(text) > 500:
+            raise VoiceError("Preview text must be 1-500 characters")
+        if _kid_blocked(text):
+            raise VoiceError("Preview blocked by the Kid Mode content filter")
+        profile = _voice_profile_from_form(
+            voice_id=voice_id, name=name or "Preview", provider=provider, seed=seed,
+            temperature=temperature, top_p=top_p, top_k=top_k,
+            refine_prompt=refine_prompt, code_prompt=code_prompt,
+            edge_voice=edge_voice, edge_rate=edge_rate,
+            edge_volume=edge_volume, edge_pitch=edge_pitch,
+        )
+        preview = _state.get("voice_preview")
+        if preview is None:
+            raise VoiceError("Voice preview is unavailable")
+        result = await preview(text=text, profile=profile)
+        if not result.get("ok"):
+            raise VoiceError(result.get("error", "Voice preview failed"))
+        return templates.TemplateResponse(
+            request, "voice_preview_result.html", {"ok": True, "error": None},
+        )
+    except (RoleError, VoiceError) as exc:
+        return templates.TemplateResponse(
+            request,
+            "voice_preview_result.html",
+            {"ok": False, "error": str(exc)},
+        )
 
 
 _ALLOWED_EMOJIS = ("😊", "😆", "😢", "😮", "🤔", "😠", "😐", "😍", "😴")

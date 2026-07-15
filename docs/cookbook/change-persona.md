@@ -1,67 +1,47 @@
 ---
-title: Change Persona
-description: Swap Dotty's personality by editing the persona prompt or pointing the LLM provider at a different persona file.
+title: Manage Roles
+description: Create, edit, activate, and assign voices to independent robot Roles.
 ---
 
-# Change Persona
+# Manage Roles
 
-Persona-file support depends on which LLM provider is active.
+A Role is an independently selectable system prompt plus a saved voice. Roles
+do not correspond to Kid Mode, Smart Mode, or robot state.
 
-Three personas ship in `personas/`:
+## Create or edit a Role
 
-| File | Style | Used by |
-|---|---|---|
-| `default.md` | Cheerful, curious desktop robot. The general-purpose persona for generic providers. | `OpenAICompat` |
-| `dotty_voice.md` | Voice-tuned default persona. | `PiVoiceLLM` via `DOTTY_PI_SYSTEM_PROMPT_FILE` |
-| `smart.md` | More capable, allowed longer answers — for when `smart_mode` is on and the cloud model is doing the heavy lifting. | optional override |
+Open the Bridge **Role** card and choose **Manage**. From there you can:
 
-## Which file controls the persona?
+- add a named Role;
+- edit its system prompt;
+- select any saved voice from the Voice dropdown;
+- activate it for subsequent turns;
+- delete an inactive Role.
 
-Check `selected_module.LLM` in `.config.yaml`, then read the matching block:
+At least one Role must remain, and the active Role cannot be deleted. Changes
+are atomically saved to:
 
-| Provider | Persona source |
-|---|---|
-| `PiVoiceLLM` (current default) | `DOTTY_PI_SYSTEM_PROMPT_FILE`; defaults to `/opt/dotty-pi/personas/dotty_voice.md` in the `dotty-pi` image. |
-| `OpenAICompat` (and similar generic providers) | `LLM.OpenAICompat.persona_file` in `.config.yaml`. |
-
-## Switch to a different shipped persona
-
-For `PiVoiceLLM`, select one of the persona files already baked into the image:
-
-```env
-DOTTY_PI_SYSTEM_PROMPT_FILE=/opt/dotty-pi/personas/smart.md
+```text
+${DOTTY_BRIDGE_STATE_DIR}/state/roles.json
 ```
 
-Then apply the changed environment:
+Role activation takes effect on the next voice turn without restarting a
+container. The assigned voice is resolved again for every spoken sentence.
 
-```bash
-docker compose up -d dotty-pi
-```
+## Initialization
 
-For `OpenAICompat`, change `LLM.OpenAICompat.persona_file` in
-`data/.config.yaml`, then restart `xiaozhi-esp32-server`.
+When `roles.json` does not exist, the first Role is named `Dotty` and uses
+`personas/default.md` plus the default ChatTTS voice. The Markdown file is only
+an initialization fallback; it does not overwrite saved Roles.
 
-## Create your own persona
+## Modes
 
-1. Copy an existing file: `cp personas/default.md personas/pirate.md`.
-2. Edit the new file. **Keep the emoji instruction line** — the firmware needs it to animate the face. See [emoji-mapping.md](../emoji-mapping.md) for the allowlist (😊😆😢😮🤔😠😐😍😴).
-3. Rebuild the relevant image so the new file is included:
+Kid Mode appends its safety prompt sandwich and enables output filtering around
+the active Role. It never replaces the Role prompt. Smart Mode remains an
+independent sticky toggle and does not select a Role.
 
-   ```bash
-   docker compose up -d --build dotty-pi xiaozhi-esp32-server
-   ```
+Keep the emoji-leader instruction in Role prompts so the firmware can animate
+the face. PiVoiceLLM also guarantees a neutral emoji fallback.
 
-4. Point the active provider at `/opt/dotty-pi/personas/pirate.md` for
-   `PiVoiceLLM`, or `personas/pirate.md` for `OpenAICompat`.
-
-## Quick inline edit (no file swap)
-
-Edit the top-level `prompt:` block in `data/.config.yaml` directly. This is the
-xiaozhi-server system prompt used by generic providers. On the `PiVoiceLLM`
-path, the `dotty-pi` image persona is the primary source, so persona source
-changes require an image rebuild.
-
-## Notes
-
-- For persona-loading providers, retain the emoji-leader rule. PiVoiceLLM additionally guarantees a neutral leading fallback in code.
-- See [protocols.md](../protocols.md) for the emoji → face frame mapping.
+Generic providers still use `LLM.OpenAICompat.persona_file` and the top-level
+`prompt:` block in `data/.config.yaml`.

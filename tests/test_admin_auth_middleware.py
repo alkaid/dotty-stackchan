@@ -206,5 +206,74 @@ class CaptureAudioRouteTests(unittest.TestCase):
         self.assertEqual(response.status, 503)
 
 
+class VoicePreviewRouteTests(unittest.TestCase):
+
+    def setUp(self):
+        self.connections = _mod._dotty_active_connections
+        self.connections.clear()
+        self.calls = []
+
+        def queue_preview(text, profile):
+            self.calls.append((text, profile))
+            return "preview-sentence"
+
+        self.tts = types.SimpleNamespace(queue_preview=queue_preview)
+        self.conn = types.SimpleNamespace(
+            headers={"device-id": "stackchan-sim-001"}, tts=self.tts,
+        )
+        self.connections["stackchan-sim-001"] = self.conn
+        self.server = _mod.SimpleHttpServer({})
+
+    def tearDown(self):
+        self.connections.clear()
+
+    def call(self, body):
+        return asyncio.run(
+            self.server._dotty_voice_preview(_JsonRequest(body))
+        )
+
+    def test_queues_unsaved_profile_on_live_tts(self):
+        profile = {
+            "id": "preview",
+            "name": "AU",
+            "provider": "edge",
+            "config": {"voice": "en-AU-NatashaNeural"},
+        }
+        response = self.call({"text": "Hello there", "profile": profile})
+        self.assertEqual(response.status, 200)
+        self.assertEqual(self.calls, [("Hello there", profile)])
+
+    def test_rejects_unsupported_provider(self):
+        response = self.call({
+            "text": "Hello", "profile": {"provider": "shell", "config": {}},
+        })
+        self.assertEqual(response.status, 400)
+        self.assertEqual(self.calls, [])
+
+    def test_rejects_non_object_body(self):
+        response = self.call([])
+        self.assertEqual(response.status, 400)
+        self.assertEqual(self.calls, [])
+
+    def test_rejects_non_string_text_or_device_id(self):
+        profile = {"provider": "chattts", "config": {}}
+        for body in (
+            {"text": 123, "profile": profile},
+            {"text": "Hello", "device_id": 123, "profile": profile},
+        ):
+            with self.subTest(body=body):
+                response = self.call(body)
+                self.assertEqual(response.status, 400)
+        self.assertEqual(self.calls, [])
+
+    def test_requires_role_tts_provider(self):
+        self.conn.tts = object()
+        response = self.call({
+            "text": "Hello",
+            "profile": {"provider": "chattts", "config": {}},
+        })
+        self.assertEqual(response.status, 409)
+
+
 if __name__ == "__main__":
     unittest.main()

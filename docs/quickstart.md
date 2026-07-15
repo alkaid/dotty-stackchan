@@ -258,18 +258,18 @@ curl http://<DEPLOY_HOST>:8081/health
 ```
 
 ### Changing voice
-The default TTS is `ChatTTS`, using one deterministic speaker for Chinese,
-English, and mixed text. Change `TTS.ChatTTS.seed` to select another stable
-speaker. Set `selected_module.TTS: LocalPiper` for the lightweight offline
-fallback, or `EdgeTTS` for a cloud voice. Restart xiaozhi-server after changes.
+The default `RoleTTS` provider uses a ChatTTS seed and can switch per Role to a
+saved EdgeTTS voice. Manage, preview, and assign voices from the Bridge Voice
+and Role cards. Piper remains a manual offline fallback.
 
 ChatTTS code is AGPLv3+ and its official weights are CC BY-NC 4.0. The default
 is intended for this project's personal, non-commercial deployment.
 
 ### Changing persona (the robot's personality)
-Edit `personas/dotty_voice.md`, then rebuild `dotty-pi` because persona files
-are image content: `docker compose up -d --build dotty-pi`. The `prompt:` key
-in `data/.config.yaml` remains the generic-provider prompt. Full instructions:
+Open **Roles** in the Bridge dashboard to add, edit, delete, or activate a Role
+and assign one of the saved voices. Role selection is independent of Kid and
+Smart modes and applies on the next voice turn without a container restart.
+The `prompt:` key in `data/.config.yaml` remains the generic-provider prompt. Full instructions:
 [cookbook/change-persona.md](cookbook/change-persona.md).
 
 ### Changing VAD sensitivity

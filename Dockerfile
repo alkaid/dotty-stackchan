@@ -12,6 +12,7 @@ COPY custom-providers/pi_voice/*.py /opt/xiaozhi-esp32-server/core/providers/llm
 COPY custom-providers/edge_stream/edge_stream.py /opt/xiaozhi-esp32-server/core/providers/tts/edge_stream.py
 COPY custom-providers/piper_local/piper_local.py /opt/xiaozhi-esp32-server/core/providers/tts/piper_local.py
 COPY custom-providers/chattts_local/chattts_local.py /opt/xiaozhi-esp32-server/core/providers/tts/chattts_local.py
+COPY custom-providers/role_tts/*.py /opt/xiaozhi-esp32-server/core/providers/tts/
 COPY custom-providers/asr/fun_local.py /opt/xiaozhi-esp32-server/core/providers/asr/fun_local.py
 COPY custom-providers/asr/sensevoice_onnx.py /opt/xiaozhi-esp32-server/core/providers/asr/sensevoice_onnx.py
 COPY custom-providers/asr/whisper_local.py /opt/xiaozhi-esp32-server/core/providers/asr/whisper_local.py

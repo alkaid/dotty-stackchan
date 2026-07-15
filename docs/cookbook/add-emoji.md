@@ -25,8 +25,9 @@ In `custom-providers/textUtils.py`, add the emoji to rule 2 in `_BASE_SUFFIX`:
 2. First character MUST be one of: 😊 😆 😢 😮 🤔 😠 😐 😍 😴 🥳
 ```
 
-Also update `personas/dotty_voice.md` and the `prompt:` block in
-`data/.config.yaml` if they list the set.
+Also update Role prompts in Bridge when they list the set. Update
+`personas/default.md` only when the first-Role initialization should change, and
+the `prompt:` block in `data/.config.yaml` when generic providers list the set.
 
 ## 3. Check firmware support
 

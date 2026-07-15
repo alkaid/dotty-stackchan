@@ -10,7 +10,7 @@ description: The pi agent runtime (dotty-pi container), the model matrix, and th
 - The "brain" is the **`dotty-pi` Docker container** running the pi coding agent with the `dotty-pi-ext` extension.
 - **`PiVoiceLLM`** (the default xiaozhi LLM provider) sends each voice turn to `dotty-pi` over HTTP RPC on the Compose network. TTS-bound text streams back to xiaozhi-server; tool dispatch happens entirely inside the container.
 - The `dotty-pi-ext` extension exposes **seven voice tools** to the agent loop: `memory_lookup`, `remember`, `recall_person`, `remember_person`, `think_hard`, `take_photo`, `play_song`.
-- **Which LLM runs which turn:** the pi outer loop targets `DOTTY_PI_MODEL` (default `dotty-simple`) through the `sub2api` provider; `think_hard` calls `VOICE_THINKER_MODEL` (default `dotty-think`) directly through an OpenAI-compatible endpoint. **Smart-mode does NOT swap the backend model on the live `PiVoiceLLM` path** — it flips ambient/behaviour only; the inner-loop model-swap is v2 scope and not wired. (Instant in-process model-swap existed only on the now-removed `Tier1Slim` provider.)
+- **Which LLM runs which turn:** the pi outer loop targets `DOTTY_PI_MODEL` (default `dotty-simple`) through the `sub2api` provider; `think_hard` calls `VOICE_THINKER_MODEL` (default `dotty-think`) directly. The active Role selects prompt and voice independently. Smart-mode does not change the Role or backend model.
 - One documented alternate voice provider exists: **`OpenAICompat`** (points straight at any OpenAI-compatible endpoint; stateless, no voice tools). See [llm-backends.md](./llm-backends.md).
 
 > **Cutover note (2026-05-19, issue #36):** The brain previously ran as the ZeroClaw Rust agent on a Raspberry Pi, fronted by a FastAPI bridge (`bridge.py`) under systemd. ZeroClaw and the RPi host are retired. `bridge.py` survives as the admin dashboard service (port 8081, `/ui`) on the Docker host; its voice and perception roles moved to `PiVoiceLLM`/`dotty-pi` and `dotty-behaviour` respectively.
@@ -24,7 +24,7 @@ description: The pi agent runtime (dotty-pi container), the model matrix, and th
 | pi tool: `memory_lookup` | (no LLM call — FTS5) | brain.db inside dotty-pi | `"do you remember…"` queries. |
 | pi tool: `take_photo` | `google/gemini-3.1-flash-lite` (`VLM_MODEL`) | dotty-behaviour → OpenRouter | Camera describe. |
 | pi tool: `play_song` | (no LLM call) | Firmware via `/xiaozhi/admin/play-asset` | Song request. |
-| Smart-mode display label (`SMART_MODEL`) | `VOICE_THINKER_MODEL` | dashboard only | Displays the configured thinker alias; smart mode does not swap the live PiVoiceLLM model. |
+| Smart-mode display label (`SMART_MODEL`) | `VOICE_THINKER_MODEL` | dashboard only | Legacy display metadata; Smart Mode does not select a Role or swap the live PiVoiceLLM model. |
 | Vision narrative (security/scene synthesis) | `VISION_MODEL` (`google/gemini-3.1-flash-lite`) | OpenRouter | dotty-behaviour internal — camera frame description. |
 | Audio captioning (security mode) | `AUDIO_CAPTION_MODEL` (`google/gemini-2.5-flash`) | OpenRouter | dotty-behaviour internal — ambient sound description. |
 
@@ -77,7 +77,7 @@ The outer pi loop and the `think_hard` escalation are deliberately separate:
 
 | Route | Config owner | Key env |
 |---|---|---|
-| Outer agent and simple route | dotty-pi container | `DOTTY_PI_PROVIDER`, `DOTTY_PI_MODEL`, `DOTTY_PI_SYSTEM_PROMPT_FILE` |
+| Outer agent and simple route | dotty-pi container | `DOTTY_PI_PROVIDER`, `DOTTY_PI_MODEL`, active Bridge Role |
 | Rendered provider config | dotty-pi container | `DOTTY_PI_BASE_URL`, `DOTTY_PI_API_KEY`, `DOTTY_PI_SIMPLE_*`, `DOTTY_PI_THINK_*` |
 | `think_hard` direct call | dotty-pi extension | `VOICE_THINKER_URL`, `VOICE_THINKER_MODEL`, `VOICE_THINKER_API_KEY` |
 

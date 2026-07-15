@@ -641,6 +641,59 @@ class SimpleHttpServer:
         return web.json_response({
             "ok": True, "device_id": resolved_id, "sentence_id": sentence_id,
         })
+
+    async def _dotty_voice_preview(self, request: "web.Request") -> "web.Response":
+        """POST /xiaozhi/admin/voice-preview
+        Body: {"text": "...", "profile": {...}, "device_id": "<optional>"}
+
+        Plays an unsaved RoleTTS profile on the connected robot. The provider
+        owns validation/synthesis details; this boundary only constrains the
+        payload shape and routes it to the live connection.
+        """
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "invalid JSON"}, status=400)
+        if not isinstance(data, dict):
+            return web.json_response({"error": "request body must be an object"}, status=400)
+        raw_text = data.get("text")
+        raw_device_id = data.get("device_id", "")
+        if not isinstance(raw_text, str):
+            return web.json_response({"error": "text must be a string"}, status=400)
+        if not isinstance(raw_device_id, str):
+            return web.json_response({"error": "device_id must be a string"}, status=400)
+        text = raw_text.strip()
+        profile = data.get("profile")
+        device_id = raw_device_id.strip()
+        if not text or len(text) > 500:
+            return web.json_response(
+                {"error": "text must be 1-500 characters"}, status=400,
+            )
+        if not isinstance(profile, dict):
+            return web.json_response({"error": "profile object required"}, status=400)
+        if profile.get("provider") not in ("chattts", "edge"):
+            return web.json_response({"error": "unsupported provider"}, status=400)
+        if not isinstance(profile.get("config"), dict):
+            return web.json_response({"error": "profile config required"}, status=400)
+        conn, err = _dotty_resolve_conn(device_id)
+        if err is not None:
+            return err
+        tts = getattr(conn, "tts", None)
+        if tts is None or not hasattr(tts, "queue_preview"):
+            return web.json_response(
+                {"error": "active TTS provider does not support voice profiles"},
+                status=409,
+            )
+        try:
+            sentence_id = await asyncio.to_thread(tts.queue_preview, text, profile)
+        except Exception as exc:
+            self.logger.bind(tag=TAG).warning(f"voice preview enqueue failed: {exc}")
+            return web.json_response({"error": "preview enqueue failed"}, status=500)
+        return web.json_response({
+            "ok": True,
+            "device_id": _dotty_conn_device_id(conn, device_id),
+            "sentence_id": sentence_id,
+        })
     # END DOTTY-PATCH --------------------------------------------------------
 
     async def start(self):
@@ -729,6 +782,10 @@ class SimpleHttpServer:
                         web.post(
                             "/xiaozhi/admin/say",
                             self._dotty_say,
+                        ),
+                        web.post(
+                            "/xiaozhi/admin/voice-preview",
+                            self._dotty_voice_preview,
                         ),
                     ]
                 )

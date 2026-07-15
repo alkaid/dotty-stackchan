@@ -150,7 +150,7 @@ It does **not** know model aliases, `brain.db`, or model-provider API keys.
 **dotty-pi (pi agent)** knows:
 - The OpenAI-compatible endpoint and model aliases rendered into `models.json`
 - The `dotty-pi-ext` extension with the seven voice tools
-- The persona files baked into the `dotty-pi` image and the persistent `brain.db`
+- The Bridge-managed Role/Voice state, the default Role initialization prompt, and the persistent `brain.db`
 
 It does **not** know about the xiaozhi WebSocket protocol or audio.
 
@@ -176,7 +176,7 @@ persona and source-rewrite endpoints have been removed.
 | Endpoint | Effect |
 |---|---|
 | `POST /admin/kid-mode` `{enabled: bool}` | Persists + hot-reloads kid-mode. Pushes the kid pip via the xiaozhi admin relay. |
-| `POST /admin/smart-mode` `{enabled: bool, device_id?}` | Persists + pushes the smart pip. It does not swap the PiVoiceLLM model. |
+| `POST /admin/smart-mode` `{enabled: bool, device_id?}` | Persists + pushes the smart pip. It does not change Role or the PiVoiceLLM model. |
 | `POST /admin/state` `{state, device_id?}` | Sets the high-level robot state through the xiaozhi admin relay. |
 
 ### xiaozhi-server `/xiaozhi/admin/*` (Docker host, port 8003)

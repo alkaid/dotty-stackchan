@@ -126,6 +126,25 @@
 
   <section>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div id="role-card-body" class="card bg-base-100 shadow-sm overflow-hidden"
+           hx-get="/ui/roles" hx-trigger="load, dotty-refresh from:window"
+           hx-sync="this:drop" hx-swap="outerHTML" hx-target="this">
+        <div class="card-body p-3 animate-pulse">
+          <div class="h-4 bg-base-300 rounded w-1/4"></div>
+        </div>
+      </div>
+      <div id="voice-card-body" class="card bg-base-100 shadow-sm overflow-hidden"
+           hx-get="/ui/voices" hx-trigger="load, dotty-refresh from:window"
+           hx-sync="this:drop" hx-swap="outerHTML" hx-target="this">
+        <div class="card-body p-3 animate-pulse">
+          <div class="h-4 bg-base-300 rounded w-1/4"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <div id="kid-card-body" class="card bg-base-100 shadow-sm overflow-hidden"
            hx-get="/ui/kid-mode" hx-trigger="load, every 10s, dotty-refresh from:window" hx-sync="this:drop" hx-swap="innerHTML"
            hx-target="this">
@@ -342,6 +361,24 @@
 <dialog id="configuration-modal" class="modal">
   <div class="modal-box max-w-2xl">
     <div id="configuration-modal-body">
+      <div class="text-sm text-base-content/50">Loading...</div>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<dialog id="role-modal" class="modal">
+  <div class="modal-box max-w-2xl bg-base-100 isolate">
+    <div id="role-modal-body">
+      <div class="text-sm text-base-content/50">Loading...</div>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<dialog id="voice-modal" class="modal">
+  <div class="modal-box max-w-2xl bg-base-100 isolate">
+    <div id="voice-modal-body">
       <div class="text-sm text-base-content/50">Loading...</div>
     </div>
   </div>

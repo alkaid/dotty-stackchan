@@ -30,7 +30,7 @@ The firmware boots into `idle` with both toggles **off**. The bridge resyncs tog
 
 **Speech sub-states** are conveyed by face animations (eye gestures, talking mouth) and the dedicated **listening pixel** at right-ring index 11. `thinking` and `speaking` have no LED — they live on the face. `listening` lights pixel 11 red so the user knows when their voice is being captured as a turn.
 
-**Smart-mode is toggle-only today.** It flips the pip and the behaviour gate, but does **not** swap the backing model — the model-swap path is v2 scope (see `docs/cutover-behaviour.md`). The previous in-process Tier1Slim hot-swap has been removed along with the Tier1Slim provider.
+**Smart-mode remains toggle-only.** It flips the pip but does not select a Role or swap the backing model. The model-swap path is v2 scope (see `docs/cutover-behaviour.md`).
 
 ---
 
@@ -67,12 +67,12 @@ The `idle → talk` trigger is the firmware `face_detected` event (any face, fam
 
 | Toggle | Toggle pip (right ring) | What it does | Persistence |
 |---|---|---|---|
-| `kid_mode` | salmon pink `(220, 80, 80)` at index **8** (G == B so PY32 RGB565 quantization stays warm) | Guardrails only — content sandwich, camera tools denied, kid-safe persona. Does not pick the model. Bridge-side hot-reload via `_apply_kid_mode()` (no daemon restart). | `bridge` container state file |
-| `smart_mode` | orange `(168, 80, 0)` at index **9** | Toggle-only today — flips the pip and behaviour gate. The model-swap it was designed to drive (ON → `SMART_MODEL` via OpenRouter; OFF → local default) is v2 scope and not wired on the `PiVoiceLLM` path. | `bridge` container state file |
+| `kid_mode` | salmon pink `(220, 80, 80)` at index **8** (G == B so PY32 RGB565 quantization stays warm) | Guardrails only — content sandwich, camera tools denied, output filter. Does not pick the Role, voice, or model. Bridge-side hot-reload via `_apply_kid_mode()` (no daemon restart). | `bridge` container state file |
+| `smart_mode` | orange `(168, 80, 0)` at index **9** | Flips the pip. Role selection is independent; backend model swap remains v2 scope. | `bridge` container state file |
 
-The two toggles are orthogonal — they compose freely. `kid_mode = on` AND `smart_mode = on` runs the smart model behind the kid-safe sandwich. Both toggles are sticky across turns, daemon restarts, and reboots.
+The two toggles are orthogonal and compose freely. `kid_mode = on` AND `smart_mode = on` keeps the active Role and backend while applying the Kid Mode guardrails and both firmware pips. Both toggles are sticky across turns, daemon restarts, and reboots.
 
-`smart_mode` is **dashboard- and admin-endpoint-only** — there is no voice trigger. Kids reach Dotty by voice but not the web dashboard, so dashboard-only is the access-control gate that keeps the more capable (and more expensive) model under household-head control.
+`smart_mode` is **dashboard- and admin-endpoint-only**; there is no voice trigger. It is a sticky, guardian-controlled firmware indicator today. Backend model behavior remains unchanged until the v2 model-swap path is implemented.
 
 ---
 
@@ -169,7 +169,7 @@ Both `kid_mode` and `smart_mode` are voice-untoggleable — they are guardian-co
 | Endpoint | Body | Effect | Where |
 |---|---|---|---|
 | `POST /admin/kid-mode` | `{"enabled": bool}` | Persists + hot-reloads kid-mode globals atomically via `_apply_kid_mode()`. No daemon restart. Also pushes the kid pip via xiaozhi `/xiaozhi/admin/set-toggle`. | bridge (`X-Admin-Token`) |
-| `POST /admin/smart-mode` | `{"enabled": bool, "device_id": "<optional>"}` | Persists the toggle + pushes the smart pip. Model-swap is v2 scope (not wired on `PiVoiceLLM`). | bridge (`X-Admin-Token`) |
+| `POST /admin/smart-mode` | `{"enabled": bool, "device_id": "<optional>"}` | Persists the toggle + pushes the smart pip. Model-swap is v2 scope. | bridge (`X-Admin-Token`) |
 | `POST /xiaozhi/admin/set-state` | `{"state": "<idle\|talk\|story_time\|security\|sleep\|dance>", "device_id": "<optional>"}` | Dispatches MCP `self.robot.set_state` onto the device WS; firmware StateManager applies it. | xiaozhi-server |
 | `POST /xiaozhi/admin/set-toggle` | `{"name": "kid_mode\|smart_mode", "enabled": bool, "device_id": "<optional>"}` | Dispatches MCP `self.robot.set_toggle`; firmware StateManager updates the pip without disturbing the active state. | xiaozhi-server |
 | `POST /xiaozhi/admin/set-face-identified` | `{"device_id": "<optional>"}` | Lights the face-identified pixel green; refresh required every < `kFaceIdentifiedTimeoutMs` (4 s) to hold. | xiaozhi-server |
@@ -195,7 +195,7 @@ Both `kid_mode` and `smart_mode` are voice-untoggleable — they are guardian-co
 | `sleep` | mic stays on for "wake up"; no LLM round-trip | n/a | n/a |
 | `dance` | xiaozhi handler dispatches choreography + audio file; firmware state supplies exclusive motion ownership, not a second choreography | n/a | head/LED MCP |
 
-`smart_mode` is a toggle only and sticky across turns; the backing model-swap it was designed to drive is v2 scope and not wired on the `PiVoiceLLM` path. `story_time` (when implemented) would be the only voice path with its own session memory (Phase 7 pending).
+`smart_mode` is sticky across turns but does not change the active Role; the backing model-swap it was designed to drive is v2 scope and not wired on the `PiVoiceLLM` path. `story_time` (when implemented) would be the only voice path with its own session memory (Phase 7 pending).
 
 ---
 

@@ -9,7 +9,6 @@ import { pathToFileURL } from "node:url";
 
 import {
   effectiveRuntimeEnv,
-  runtimeConfigFingerprint,
 } from "./runtime-config.mjs";
 
 const PORT = Number(process.env.DOTTY_PI_RPC_PORT ?? "8091");
@@ -21,6 +20,31 @@ const THINKING_LEVELS = new Set([
 function boolEnv(env, name, fallback) {
   const value = (env[name] ?? String(fallback)).trim().toLowerCase();
   return ["1", "true", "yes", "on"].includes(value);
+}
+
+export function loadActiveRole(env = process.env) {
+  const path = env.DOTTY_ROLES_FILE
+    ?? "/var/lib/dotty-bridge/state/roles.json";
+  try {
+    const state = JSON.parse(readFileSync(path, "utf8"));
+    const role = state.roles.find(
+      (candidate) => candidate.id === state.active_role_id,
+    );
+    if (role && typeof role.prompt === "string" && role.prompt.trim()) {
+      return role;
+    }
+  } catch {
+    // A missing store is the expected state before the first Bridge edit.
+  }
+  const promptPath = env.DOTTY_PI_SYSTEM_PROMPT_FILE
+    ?? "/opt/dotty-pi/personas/default.md";
+  const prompt = readFileSync(promptPath, "utf8").trim();
+  if (!prompt) throw new Error("default role prompt is empty");
+  return { id: "default", name: "Dotty", prompt, voice_id: "default" };
+}
+
+export function resolveSystemPrompt(env = effectiveRuntimeEnv()) {
+  return loadActiveRole(env).prompt.trim();
 }
 
 function simpleThinkingLevel(env) {
@@ -36,12 +60,7 @@ function simpleThinkingLevel(env) {
   return level;
 }
 export function buildPiArgs(env = effectiveRuntimeEnv()) {
-  const promptPath = env.DOTTY_PI_SYSTEM_PROMPT_FILE
-    ?? "/opt/dotty-pi/personas/dotty_voice.md";
-  const systemPrompt = readFileSync(promptPath, "utf8").trim();
-  if (!systemPrompt) {
-    throw new Error(`dotty-pi system prompt is empty: ${promptPath}`);
-  }
+  const systemPrompt = resolveSystemPrompt(env);
   const extra = (env.DOTTY_PI_EXTRA_FLAGS ?? "")
     .trim()
     .split(/\s+/)
@@ -74,7 +93,8 @@ export class PiRpc {
 
   start() {
     const env = effectiveRuntimeEnv();
-    const fingerprint = runtimeConfigFingerprint();
+    const args = buildPiArgs(env);
+    const fingerprint = JSON.stringify(args);
     if (
       this.proc
       && this.proc.exitCode === null
@@ -93,7 +113,6 @@ export class PiRpc {
       );
     }
 
-    const args = buildPiArgs(env);
     this.queue = [];
     this.stderr = [];
     this.proc = spawn("pi", args, {

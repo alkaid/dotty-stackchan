@@ -46,15 +46,16 @@ Every live `PiVoiceLLM` turn uses one versioned prompt-policy layer followed
 by deterministic output backstops where those backstops are implemented.
 
 > **Layering on the live `PiVoiceLLM` path:**
+> - **Role policy** is the independently selected Bridge Role. Kid Mode does not replace or modify it.
 > - **Prompt policy** is the per-turn **sandwich suffix** — `build_turn_suffix(kid_mode)` from `custom-providers/textUtils.py`, applied by `custom-providers/pi_voice/pi_voice.py` (`_wrap_with_sandwich`). It includes the kid-mode topic constraints (rules below) when kid-mode is on.
 > - **Emoji backstop** is `_enforce_leading_emoji()` in `pi_voice.py`, which guarantees an allowed leading face glyph independently of model compliance.
 > - **Output backstop:** `filter_tts_stream()` in `custom-providers/textUtils.py` buffers the complete Kid Mode reply, checks the shared blocked-words tiers, and replaces a matching turn before TTS. Both `PiVoiceLLM` and `OpenAICompat` use it. This is a thin, bypassable word-level backstop, not a content-safety guarantee; live red-team verification remains tracked in #157.
 >
-> PiVoiceLLM forwards only the last user message plus this per-turn policy. Its
-> Pi command uses `--no-context-files`; neither `personas/dotty_voice.md` nor
-> xiaozhi-server's top-level `.config.yaml` `prompt:` is injected into this RPC
-> request. Those files may apply to other providers but are not live
-> PiVoiceLLM enforcement layers.
+> PiVoiceLLM forwards only the last user message plus this per-turn policy.
+> The long-lived pi subprocess receives the active Role prompt through
+> `--system-prompt`; `--no-context-files` prevents unrelated repository context
+> files from being added. Xiaozhi-server's top-level `.config.yaml` `prompt:`
+> is not forwarded on this path.
 >
 > The `Tier1Slim` provider was removed entirely and is no longer a live or rollback option.
 
@@ -317,9 +318,8 @@ is to route the `stackchan` channel to a model with stronger built-in safety
 ### Modifying the Topic Blocklist
 
 Edit the suffix text in `build_turn_suffix()` in `custom-providers/textUtils.py`
-(rule 5), and/or edit rule 5 in `personas/dotty_voice.md`. Both are image
-content, so rebuild the affected services:
-`docker compose up -d --build xiaozhi-esp32-server dotty-pi`.
+(rule 5) and rebuild xiaozhi-server. Role prompts are intentionally independent
+of Kid Mode and should not be used as the safety switch.
 
 ### Changing the Self-Harm Response
 

@@ -19,7 +19,7 @@ selected_module:
   ASR: <ASR_MODULE>       # FunASR default; WhisperLocal / SenseVoiceOnnx opt-in
   LLM: PiVoiceLLM         # default: agent loop hosted in the dotty-pi container (requires the sibling dotty-pi service)
   # LLM: OpenAICompat      # <-- alternate: direct OpenAI-compatible LLM
-  TTS: ChatTTS
+  TTS: RoleTTS
   Memory: nomem
   Intent: nointent
 
@@ -98,6 +98,12 @@ ASR:
     use_itn: true
 
 TTS:
+  RoleTTS:
+    type: role_tts
+    model_path: /opt/xiaozhi-esp32-server/models/chattts
+    device: auto
+    roles_path: /var/lib/dotty-bridge/state/roles.json
+    voices_path: /var/lib/dotty-bridge/state/voices.json
   ChatTTS:
     type: chattts_local
     model_path: /opt/xiaozhi-esp32-server/models/chattts

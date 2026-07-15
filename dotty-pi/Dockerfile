@@ -40,7 +40,7 @@ RUN chmod +x /usr/local/bin/render-models-json.mjs /usr/local/bin/dotty-pi-rpc-s
     && mkdir -p /root/.pi/extensions \
     && ln -s /opt/dotty-pi/extensions/dotty-pi-ext /root/.pi/extensions/dotty-pi-ext
 
-ENV DOTTY_PI_SYSTEM_PROMPT_FILE=/opt/dotty-pi/personas/dotty_voice.md
+ENV DOTTY_PI_SYSTEM_PROMPT_FILE=/opt/dotty-pi/personas/default.md
 
 # Run a small HTTP wrapper around pi RPC. xiaozhi-server reaches it over
 # the compose network, so no Docker socket or Docker CLI is needed.

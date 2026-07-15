@@ -4,10 +4,7 @@
         class="flex items-center justify-between gap-3">
     <div class="min-w-0 flex-1">
       <div class="font-semibold text-sm">Smart Mode</div>
-      {# Live PiVoiceLLM path — no backend model swap (v2 scope). The
-         Tier1Slim rollback provider that used to hot-swap the voice model
-         was removed in the 2026-05-29 alignment pass; smart_mode now just
-         lights the robot's smart-mode LED + persists the flag. #}
+      {# Live PiVoiceLLM path: backend model swap remains v2 scope. #}
       <div class="text-xs text-base-content/60 mt-0.5">
         Robot smart-mode pip {{ "on" if enabled else "off" }}
         <span class="text-base-content/40">· model-swap pending (v2)</span>

@@ -94,11 +94,12 @@ it directly. Run `./scripts/voice-install.sh --help` for flags.
 After installing a Piper voice, run `make doctor` to verify the file is
 in place, then restart the server: `docker compose restart xiaozhi-esp32-server`.
 
-## How to switch voices
+## How to use voices
 
-See [Swap Voice](cookbook/swap-voice.md) for the full walkthrough on
-editing `.config.yaml` for the ChatTTS, Piper, or EdgeTTS backends. The Piper
-short version:
+Use the Bridge Voice card to create and preview ChatTTS or EdgeTTS profiles,
+then assign one from a Role's Voice dropdown. See [Manage Voices](cookbook/swap-voice.md).
+
+Piper is still a manual fallback. The short version is:
 
 ```yaml
 selected_module:

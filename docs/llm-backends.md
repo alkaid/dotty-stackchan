@@ -145,7 +145,7 @@ The default in the shipped `.config.yaml`. The `PiVoiceLLM` provider routes each
 | `play_song` | Play a song through the speaker |
 
 Only TTS-bound text streams back to xiaozhi-server — tool results stay internal to the agent loop.
-PiVoiceLLM does not use its `.config.yaml` `persona_file` or forward xiaozhi's configured system dialogue. The dotty-pi RPC wrapper loads `DOTTY_PI_SYSTEM_PROMPT_FILE`, and PiVoiceLLM appends the language, format, and Kid Mode policy to every user turn.
+PiVoiceLLM does not use its `.config.yaml` `persona_file` or forward xiaozhi's configured system dialogue. The dotty-pi RPC wrapper loads the active Bridge-managed Role prompt from `roles.json`; PiVoiceLLM independently appends the language, format, and optional Kid Mode policy to every user turn. Kid and Smart mode never select the Role.
 
 ### Prerequisites
 

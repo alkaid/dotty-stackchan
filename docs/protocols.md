@@ -151,10 +151,10 @@ Smaller set = more predictable face animations, fewer corner-cases in the xiaozh
 
 ### Two-layer enforcement
 
-1. **Persona prompt** (`personas/dotty_voice.md`) — asks for a leading emoji.
-2. **xiaozhi-server top-level `prompt:`** — also asks for a leading emoji.
+1. **Active Role prompt** — the Bridge-managed Role asks for a leading emoji.
+2. **PiVoiceLLM output backstop** — `_enforce_leading_emoji()` prepends neutral `😐` when the model omits an allowed emoji.
 
-(A third bridge-side `_ensure_emoji_prefix` fallback existed in the retired ZeroClaw voice path; it is not present in the current `PiVoiceLLM` path.)
+Generic providers additionally use xiaozhi-server's top-level `prompt:`.
 
 ## MCP tools over WS
 

@@ -70,7 +70,7 @@ services:
       DOTTY_PI_RPC_PORT: 8091
       DOTTY_PI_TURN_TIMEOUT_MS: ${DOTTY_PI_TURN_TIMEOUT_MS:-120000}
       DOTTY_PI_EXTRA_FLAGS: ${DOTTY_PI_EXTRA_FLAGS:-}
-      DOTTY_PI_SYSTEM_PROMPT_FILE: ${DOTTY_PI_SYSTEM_PROMPT_FILE:-/opt/dotty-pi/personas/dotty_voice.md}
+      DOTTY_PI_SYSTEM_PROMPT_FILE: ${DOTTY_PI_SYSTEM_PROMPT_FILE:-/opt/dotty-pi/personas/default.md}
       DOTTY_ADMIN_TOKEN: ${DOTTY_ADMIN_TOKEN:-}
       DOTTY_KID_MODE: ${DOTTY_KID_MODE:-true}
       XIAOZHI_ADMIN_BASE_URL: http://xiaozhi-esp32-server:8003

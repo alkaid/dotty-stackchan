@@ -1,67 +1,55 @@
 ---
-title: Swap Voice
-description: Change the ChatTTS speaker or switch to Piper/EdgeTTS.
+title: Manage Voices
+description: Save and preview ChatTTS or EdgeTTS profiles and assign them to Roles.
 ---
 
-# Swap Voice
+# Manage Voices
 
-Three TTS backends are configured in `.config.yaml`. For a curated list
-of voices that suit Dotty's persona (with character notes and best-for
-hints) see the [Voice Catalog](../voice-catalog.md).
+Open the Bridge **Voice** card and choose **Manage**. Voice profiles are named,
+reusable configurations saved in:
 
-## ChatTTS (default, bilingual)
-
-ChatTTS uses one speaker for Chinese, English, and mixed text. Change the
-integer `TTS.ChatTTS.seed` to choose another deterministic speaker, then
-restart xiaozhi-server. Its official model weights are CC BY-NC 4.0.
-
-## Piper (local, offline)
-
-The fastest path is the install helper, which downloads any catalog
-voice into `models/piper/` and (optionally) rewrites `.config.yaml` for
-you:
-
-```bash
-make voice-list                                       # see the catalog
-make voice-install VOICE=en_US-kristin-medium APPLY=1
-docker compose restart xiaozhi-esp32-server
+```text
+${DOTTY_BRIDGE_STATE_DIR}/state/voices.json
 ```
 
-Or do it by hand:
+Each Role selects one saved voice. A voice that is still assigned to a Role
+cannot be deleted.
 
-1. Download a voice `.onnx` + `.onnx.json` from
-   [Piper samples](https://rhasspy.github.io/piper-samples/) into `models/piper/`.
+## Preview
 
-2. Update `.config.yaml`:
+Edit the Preview text and press **Preview**. Bridge sends the unsaved form
+values to the connected robot, which speaks the text without changing the
+saved profile. Preview requires an online robot.
 
-```yaml
-selected_module:
-  TTS: LocalPiper
-TTS:
-  LocalPiper:
-    model_path: models/piper/en_US-lessac-medium.onnx
-```
+## ChatTTS
 
-3. Restart: `docker compose restart xiaozhi-esp32-server`
+ChatTTS handles Chinese, English, and mixed text locally. Profiles expose:
 
-## EdgeTTS (cloud, many voices)
+- deterministic speaker `seed`;
+- `temperature`, `top_p`, and `top_k` sampling;
+- ChatTTS `refine_prompt` and `code_prompt` controls.
 
-1. List voices: `pip install edge-tts && edge-tts --list-voices | grep en-`
-2. Update `.config.yaml`:
+The initialization profile uses seed `42` and the repository's existing
+sampling values.
 
-```yaml
-selected_module:
-  TTS: EdgeTTS            # or StreamingEdgeTTS
-TTS:
-  EdgeTTS:
-    voice: en-AU-WilliamNeural    # change to your pick
-```
+## EdgeTTS
 
-3. Restart: `docker compose restart xiaozhi-esp32-server`
+EdgeTTS uses Microsoft's cloud Read Aloud service. Profiles expose:
 
-## Tips
+- the named voice, such as `en-AU-NatashaNeural`;
+- rate and volume percentages;
+- pitch in Hz.
 
-- Piper is fully offline with no latency jitter. Prefer it for reliability.
-- EdgeTTS has more variety but needs internet and occasionally throttles.
-- **English voices only** -- non-English voices produce empty audio. See
-  [voice-pipeline.md](../voice-pipeline.md).
+Edge voices are language-specific and require internet access. The Bridge form
+includes a small curated list but also accepts another valid Edge voice name.
+
+## Runtime behavior
+
+`selected_module.TTS: RoleTTS` is a combined provider. Before each sentence it
+reads the active Role's `voice_id`, then uses either ChatTTS or EdgeTTS. Role and
+voice changes therefore need no xiaozhi restart.
+
+Piper remains available as a manual fallback through `selected_module.TTS:
+LocalPiper`, but it bypasses the Role voice library and requires a server
+restart. See the [Voice Catalog](../voice-catalog.md) for Piper models and Edge
+voice names.

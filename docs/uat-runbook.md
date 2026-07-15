@@ -70,7 +70,7 @@ issues rather than spawning new ones, and their clips are candidate
 |---|---|---|
 | `story_time` backing path | Phase 7 pending — state/LED rails only | modes.md Phase 7 |
 | `security` capture path | SecurityCycle scaffolding; audio leg unshipped (#31) | modes.md Phase 8, #31 |
-| `smart_mode` model swap | toggle-only; swap is v2 scope | #36 cutover notes |
+| `smart_mode` model swap | persona changes; model swap is v2 scope | #36 cutover notes |
 | Tools-inventory card count | dashboard card may list 5 legacy entries; Pi registers 7 voice tools | treat the dashboard as stale presentation, verify Pi inventory separately |
 
 ---
@@ -156,7 +156,7 @@ face events and survive chat-turn ends; `wake up` / `come back` /
 | UL1 | Dashboard: kid_mode ON, then OFF | Pixel 8 warm pink ≤1 s; dashboard dot matches; off→dark | bridge → `/xiaozhi/admin/set-toggle`; `_apply_kid_mode()` hot-reload | "Kid mode: one pink light" |
 | UL2 | With kid_mode ON, ask a borderline question (e.g. about a scary movie) | Kind redirect, age-appropriate | content-filter sandwich; Safety card hit (UD7) | QA-critical; clip only if the redirect is charming |
 | UL3 | With kid_mode ON: *"what do you see?"* **⚠ known gap** | Record actual behavior; no live PiVoice camera-denial policy exists yet | verify whether shortcut or `take_photo` ran; file a safety issue if camera access occurs | QA-critical; do not present as a shipped privacy guarantee |
-| UL4 | Dashboard: smart_mode ON, then OFF **⚠ pending** | Pixel 9 orange; dot matches; **no behaviour change** (swap is v2) | `set-toggle smart_mode`; `model_swap_active=False` | QA-only |
+| UL4 | Dashboard: smart_mode ON, then OFF **⚠ pending** | Pixel 9 orange; Role and backend model stay unchanged | `set-toggle smart_mode`; `model_swap_active=False` | QA-only |
 | UL5 | During UL1+UL4, camera close on pixels 7 and 10 | Both stay dark throughout (reserved, locked off) | — | QA-only |
 | UL6 | Voice: *"turn your LEDs blue"* | Only **left** ring goes blue; right-ring pips untouched | `set_led_color` tool call | "She won't let *anyone* touch her status lights" |
 | UL7 | Ask her to set LED **6** red | Pixel 6 unchanged; record the verbal response | serial warn if firmware receives `set_led_multi`; PiVoice has no LED voice tool | tail of UL6 clip |

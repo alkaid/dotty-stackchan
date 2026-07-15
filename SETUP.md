@@ -196,7 +196,7 @@ All of these are edits to `data/.config.yaml` on the Docker host followed by
 |---|---|---|
 | "It cuts me off mid-sentence" | raise `min_silence_duration_ms` from 700 to e.g. 1000 | `data/.config.yaml` → VAD.SileroVAD |
 | "It waits forever after I stop talking" | lower `min_silence_duration_ms` to 400 | same |
-| "I don't like the voice" | change `TTS.ChatTTS.seed`, or select a Piper/EdgeTTS fallback | `data/.config.yaml` → selected_module.TTS |
+| "I don't like the voice" | create and preview ChatTTS/EdgeTTS profiles, then assign one to the Role | Bridge → Voice / Role |
 | "Responses are too long" | add "Keep replies under 20 words." to the persona | `data/.config.yaml` → `prompt:` block |
 | "Too slow to reply" | switch LLM model | see [dotty-pi/README.md](../dotty-pi/README.md) for model selection rules |
 | "No facial expression change" | check response actually starts with a supported emoji (tail logs) | — |

@@ -150,9 +150,9 @@ def _write_smart_mode(enabled: bool) -> None:
 # smart_mode (toggle-only)
 # ---------------------------------------------------------------------------
 # Tier1Slim was removed in the 2026-05-29 alignment pass. On the live
-# PiVoiceLLM path smart_mode does NOT swap the backend model — model-swap is
-# v2 scope (docs/cutover-behaviour.md). The dashboard/admin flip now only
-# persists the flag and lights the firmware smart-mode LED pip.
+# PiVoiceLLM does not swap the backend model — model-swap is v2 scope
+# (docs/cutover-behaviour.md). The flag persists dashboard state and lights
+# the firmware smart-mode LED pip.
 
 
 # ---------------------------------------------------------------------------
@@ -695,10 +695,8 @@ if _configure_dashboard is not None:
         return {"ok": ok}
 
     async def _dashboard_set_smart_mode(enabled: bool) -> dict:
-        """Persist smart_mode + push the firmware LED pip. On the live
-        PiVoiceLLM path there is no backend model swap (v2 scope) — the
-        Tier1Slim hot-swap path was removed in the 2026-05-29 alignment
-        pass."""
+        """Persist smart_mode and push the firmware LED pip. The live
+        PiVoiceLLM backend model remains unchanged."""
         _write_smart_mode(enabled)
         dispatch_ok = await _dispatch_set_toggle("", "smart_mode", enabled)
         if not dispatch_ok:
@@ -719,6 +717,29 @@ if _configure_dashboard is not None:
     async def _dashboard_memory_redact(mem_id: str) -> dict:
         ok = await asyncio.to_thread(_voice_memory_delete_blocking, mem_id)
         return {"ok": ok}
+
+    async def _dashboard_voice_preview(*, text: str, profile: dict) -> dict:
+        if not _XIAOZHI_ADMIN_BASE_URL:
+            return {"ok": False, "error": "XIAOZHI_ADMIN_BASE_URL not set"}
+
+        def _post() -> dict:
+            try:
+                response = requests.post(
+                    f"{_XIAOZHI_ADMIN_BASE_URL}/xiaozhi/admin/voice-preview",
+                    json={"text": text, "profile": profile},
+                    headers=_xiaozhi_admin_headers(),
+                    timeout=5,
+                )
+                if response.status_code == 200:
+                    return {"ok": True, **response.json()}
+                return {
+                    "ok": False,
+                    "error": f"HTTP {response.status_code}: {response.text[:200]}",
+                }
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+
+        return await asyncio.to_thread(_post)
 
     _configure_dashboard(
         # send_message is unused by dashboard.py post-#111 (voice turns
@@ -743,6 +764,7 @@ if _configure_dashboard is not None:
         memory_records_getter=_dashboard_memory_records,
         memory_approve=_dashboard_memory_approve,
         memory_redact=_dashboard_memory_redact,
+        voice_preview=_dashboard_voice_preview,
         identity_display_name=_identity_display_name,
         last_user_line_getter=_dashboard_last_user_line_getter,
         sound_balance_getter=_dashboard_sound_balance_series,
@@ -806,9 +828,8 @@ async def _admin_kid_mode(payload: _AdminKidModeIn) -> dict:
 
 @_admin_router.post("/smart-mode")
 async def _admin_smart_mode(payload: _AdminSmartModeIn) -> dict:
-    """Persist smart_mode + push the firmware LED pip. On the live
-    PiVoiceLLM path there is no backend model swap (v2 scope) — the
-    Tier1Slim hot-swap path was removed in the 2026-05-29 alignment pass."""
+    """Persist smart_mode and push the firmware LED pip. The live PiVoiceLLM
+    backend model remains unchanged."""
     _write_smart_mode(payload.enabled)
     pushed = await _dispatch_set_toggle(
         payload.device_id, "smart_mode", payload.enabled,

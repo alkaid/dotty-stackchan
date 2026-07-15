@@ -91,9 +91,11 @@ Custom provider at `custom-providers/openai_compat/openai_compat.py`. Talks dire
 
 `custom-providers/xiaozhi-patches/textMessageHandlerRegistry.py` adds an `EventTextMessageHandler` that intercepts firmware `event` frames over the WS and POSTs each one to `dotty-behaviour`'s `/api/perception/event`. This is what feeds the `dotty-behaviour` perception consumers — see [architecture.md](./architecture.md#perception-event-bus).
 
-### TTS — ChatTTS (active) / LocalPiper and EdgeTTS (rollback)
+### TTS — RoleTTS (ChatTTS / EdgeTTS) / LocalPiper rollback
 
-**Active: ChatTTS local.**
+**Active: RoleTTS.** It resolves the active Role's saved voice before every
+sentence and dispatches to local ChatTTS or cloud EdgeTTS. Voice profiles and
+Role assignments are managed and previewed in Bridge without restarting.
 
 - One model handles Chinese, English, and mixed-language sentences without a
   language selector. It outputs 24 kHz PCM, which the provider incrementally
@@ -102,7 +104,7 @@ Custom provider at `custom-providers/openai_compat/openai_compat.py`. Talks dire
   RTX 5070 Ti, the model uses about 1.14 GB peak VRAM; measured synthesis was
   0.59 s for a 2.20 s English sample and 1.55 s for the first 2.19 s Chinese
   sample, including first-run warm-up.
-- The speaker is stable across restarts through `TTS.ChatTTS.seed`. Model files
+- ChatTTS speakers are stable through each saved profile's `seed`. Model files
   live under `models/chattts/` and are SHA-256 validated at load time.
 - License: code AGPLv3+; official model weights CC BY-NC 4.0. This configuration
   is for personal, non-commercial use.
@@ -116,7 +118,7 @@ Custom provider at `custom-providers/openai_compat/openai_compat.py`. Talks dire
 - Runs fully offline — no external HTTP calls.
 - **License note (unverified).** Piper voices are MIT-licensed as a repo, but individual voices carry their own upstream license depending on training data. Verify the Cori-specific voice license before redistributing your robot's recordings beyond personal use. Starting point: [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices).
 
-**Rollback: EdgeTTS (`type: edge`).**
+**RoleTTS option: EdgeTTS.**
 - Uses Microsoft's unofficial Edge "Read aloud" endpoint (reverse-engineered; no official API key).
 - Voice: `en-US-AnaNeural` (our previous child-sounding voice).
 - Streaming supported; non-streaming is the default that ships with the upstream image.
@@ -127,10 +129,10 @@ One-line rollback command is in `../README.md` → "Common ops".
 
 ## Custom provider mechanism
 
-xiaozhi-server discovers providers by module path. `selected_module.TTS: ChatTTS`
-uses `TTS.ChatTTS.type: chattts_local`, which resolves to
-`core/providers/tts/chattts_local.py`. Provider source is baked into the image;
-model weights remain a read-only runtime mount.
+xiaozhi-server discovers providers by module path. `selected_module.TTS: RoleTTS`
+uses `TTS.RoleTTS.type: role_tts`, which resolves to
+`core/providers/tts/role_tts.py`. Provider source is baked into the image;
+model weights and Bridge state remain runtime mounts.
 
 **Implication for upgrades.** When the upstream image changes, the mount still works as long as:
 1. The provider-directory convention hasn't changed.

@@ -32,6 +32,7 @@ RUN if [ -n "$PIP_INDEX_URL" ]; then \
 COPY bridge.py ./bridge.py
 COPY bridge ./bridge
 COPY custom-providers/textUtils.py ./custom-providers/textUtils.py
+COPY personas /app/personas
 
 # Stamp the deployed git SHA so the dashboard version chip reads it
 # (the image has no .git checkout, so dashboard.py's git fallback can't

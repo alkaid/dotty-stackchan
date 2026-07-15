@@ -94,7 +94,7 @@ This repo uses placeholders (`<DEPLOY_HOST>`, `<XIAOZHI_USER>`, `<XIAOZHI_PATH>`
 - `dotty-pi/` — Docker image + compose for the pi agent container (the brain). See `dotty-pi/README.md`.
 - `dotty-pi-ext/` — pi extension providing the **seven** voice tools (`memory_lookup`, `remember`, `recall_person`, `remember_person`, `think_hard`, `take_photo`, `play_song`), loaded into the `dotty-pi` agent. (`recall_person`/`remember_person` were added in #53.)
 - `dotty-behaviour/` — FastAPI service (port 8090): the perception event bus, ambient consumers, vision/audio explain endpoints, the proactive greeter, and calendar context. Successor to the bridge's perception role. See `dotty-behaviour/README.md`.
-- `personas/default.md` — default robot persona prompt (swappable).
+- `personas/default.md` — initialization prompt for the first Role; runtime Roles and their voice assignments live in Bridge-managed state.
 - `session-prompt.md` — Claude Code session prompt for infrastructure setup.
 
 ## Emotion/Expression Protocol
@@ -103,10 +103,10 @@ The LLM response MUST start with an emoji. The xiaozhi firmware parses it into a
 😊=smile 😆=laugh 😢=sad 😮=surprise 🤔=thinking 😠=angry 😐=neutral 😍=love 😴=sleepy
 
 Two layers enforce this on the live `PiVoiceLLM` path:
-1. **The pi agent's persona prompt** (the configured persona) — primary source.
-2. **xiaozhi-server top-level `prompt:`** in `data/.config.yaml` — injected as a system message.
+1. **The pi agent's active Role prompt** — primary source.
+2. **`PiVoiceLLM._enforce_leading_emoji()`** — deterministic neutral fallback.
 
-The old third layer — a `_ensure_emoji_prefix` fallback in `bridge.py` — only ran on the retired ZeroClaw voice path; `PiVoiceLLM` has no equivalent, so the persona prompts are load-bearing.
+The xiaozhi-server top-level `prompt:` in `data/.config.yaml` applies to generic providers, not the live PiVoiceLLM agent path.
 
 ## Key Directories
 
@@ -128,8 +128,7 @@ Run `make help` for the full list. Key targets:
 
 ## Common Maintenance Tasks
 
-- **Change TTS voice**: Edit `TTS.ChatTTS.seed` for another stable bilingual speaker. Switch `selected_module.TTS` to `LocalPiper`, `EdgeTTS`, or `StreamingEdgeTTS` for a fallback, then restart xiaozhi-server.
-- **Change system prompt**: Edit `data/.config.yaml` on the Docker host, top-level `prompt:` block. Restart container.
+- **Change Role / voice**: Use the Bridge Role and Voice cards. Roles are independent of Kid/Smart modes and select a saved ChatTTS or EdgeTTS voice profile.
 - **Check logs**: `ssh <XIAOZHI_USER>@<DEPLOY_HOST> 'cd <XIAOZHI_PATH> && docker compose logs -f xiaozhi-esp32-server'`
 - **Restart pipeline**: `ssh <XIAOZHI_USER>@<DEPLOY_HOST> 'cd <XIAOZHI_PATH> && docker compose restart'`
 - **Test the dashboard service**: `curl http://<DEPLOY_HOST>:8081/health`

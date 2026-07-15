@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { buildPiArgs, createRpcServer, PiRpc } from "../rpc-server.mjs";
+import {
+  buildPiArgs,
+  createRpcServer,
+  loadActiveRole,
+  PiRpc,
+} from "../rpc-server.mjs";
 
 function deferred() {
   let resolve;
@@ -30,12 +35,44 @@ test("pi starts with the baked persona and no built-in tools", () => {
   try {
     const args = buildPiArgs({
       DOTTY_PI_SYSTEM_PROMPT_FILE: promptPath,
+      DOTTY_ROLES_FILE: join(dir, "missing-roles.json"),
       DOTTY_PI_PROVIDER: "sub2api",
       DOTTY_PI_MODEL: "dotty-simple",
     });
     assert.ok(args.includes("--no-builtin-tools"));
     assert.equal(args[args.indexOf("--system-prompt") + 1], "You are Dotty.");
     assert.equal(args[args.indexOf("--thinking") + 1], "off");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("active role selects the prompt independently of Kid and Smart modes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "dotty-pi-test-"));
+  const rolesPath = join(dir, "roles.json");
+  const kidPath = join(dir, "kid-mode");
+  const smartPath = join(dir, "smart-mode");
+  const env = {
+    DOTTY_ROLES_FILE: rolesPath,
+    DOTTY_KID_MODE_STATE: kidPath,
+    DOTTY_SMART_MODE_STATE: smartPath,
+  };
+  try {
+    writeFileSync(rolesPath, JSON.stringify({
+      active_role_id: "guide",
+      roles: [
+        { id: "default", name: "Dotty", prompt: "Default role" },
+        { id: "guide", name: "Guide", prompt: "Guide role", voice_id: "edge" },
+      ],
+    }));
+    writeFileSync(kidPath, "true");
+    writeFileSync(smartPath, "true");
+    assert.equal(loadActiveRole(env).id, "guide");
+    const args = buildPiArgs(env);
+    assert.equal(
+      args[args.indexOf("--system-prompt") + 1],
+      "Guide role",
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -48,6 +85,7 @@ test("simple route reasoning selects the configured pi thinking level", () => {
   try {
     const args = buildPiArgs({
       DOTTY_PI_SYSTEM_PROMPT_FILE: promptPath,
+      DOTTY_ROLES_FILE: join(dir, "missing-roles.json"),
       DOTTY_PI_SIMPLE_REASONING: "true",
       DOTTY_PI_SIMPLE_REASONING_EFFORT: "high",
     });

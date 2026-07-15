@@ -60,6 +60,7 @@ bridge_app.app.router.lifespan_context = _noop_lifespan
 from fastapi.testclient import TestClient  # noqa: E402
 
 import bridge.csrf as csrf_mod  # noqa: E402
+import bridge.dashboard as dashboard_mod  # noqa: E402
 
 
 class CSRFCookieIssuanceTests(unittest.TestCase):
@@ -259,6 +260,104 @@ class DashboardConfigurationTests(unittest.TestCase):
         self.assertIn("WebSocket base URL must be an origin", response.text)
         self.assertFalse(self.path.exists())
 
+
+class DashboardRoleVoiceTests(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(bridge_app.app)
+        self.tmp = tempfile.TemporaryDirectory(prefix="dotty-role-voice-")
+        root = Path(self.tmp.name)
+        self.roles_path = root / "roles.json"
+        self.voices_path = root / "voices.json"
+        self.seed_path = root / "default.md"
+        self.seed_path.write_text("You are Dotty.", encoding="utf-8")
+        self.env_patch = patch.dict(os.environ, {
+            "DOTTY_ROLES_FILE": str(self.roles_path),
+            "DOTTY_VOICES_FILE": str(self.voices_path),
+            "DOTTY_DEFAULT_ROLE_FILE": str(self.seed_path),
+        })
+        self.env_patch.start()
+        self.preview_calls = []
+
+        async def preview(**kwargs):
+            self.preview_calls.append(kwargs)
+            return {"ok": True}
+
+        self.old_preview = dashboard_mod._state.get("voice_preview")
+        dashboard_mod._state["voice_preview"] = preview
+
+    def tearDown(self):
+        dashboard_mod._state["voice_preview"] = self.old_preview
+        self.env_patch.stop()
+        self.tmp.cleanup()
+
+    def _token(self) -> str:
+        self.client.get("/ui/")
+        token = csrf_mod._unsign(self.client.cookies[csrf_mod.COOKIE_NAME])
+        assert token is not None
+        return token
+
+    def _post(self, path: str, data: dict[str, str]):
+        return self.client.post(
+            path, data=data, headers={"X-CSRF-Token": self._token()},
+        )
+
+    def _edge_form(self) -> dict[str, str]:
+        return {
+            "voice_id": "",
+            "name": "Young AU",
+            "provider": "edge",
+            "edge_voice": "en-AU-NatashaNeural",
+            "edge_rate": "+10%",
+            "edge_volume": "+0%",
+            "edge_pitch": "+5Hz",
+        }
+
+    def test_role_and_voice_crud_with_reference_protection(self):
+        response = self._post("/ui/actions/voices/save", self._edge_form())
+        self.assertEqual(response.status_code, 200)
+        voice_state = json.loads(self.voices_path.read_text())
+        edge_id = voice_state["voices"][1]["id"]
+
+        response = self._post("/ui/actions/roles/create", {
+            "name": "Guide",
+            "prompt": "You are a guide.",
+            "voice_id": edge_id,
+        })
+        self.assertEqual(response.status_code, 200)
+        role_state = json.loads(self.roles_path.read_text())
+        guide_id = role_state["roles"][1]["id"]
+        self._post("/ui/actions/roles/activate", {"role_id": guide_id})
+        self.assertIn("Young AU", self.client.get("/ui/voices").text)
+
+        blocked = self._post("/ui/actions/voices/delete", {"voice_id": edge_id})
+        self.assertIn("Voice is used by: Guide", blocked.text)
+
+        self._post("/ui/actions/roles/update", {
+            "role_id": guide_id,
+            "name": "Guide",
+            "prompt": "You are a patient guide.",
+            "voice_id": "default",
+        })
+        deleted = self._post("/ui/actions/voices/delete", {"voice_id": edge_id})
+        self.assertIn("Saved", deleted.text)
+        self.assertEqual(len(json.loads(self.voices_path.read_text())["voices"]), 1)
+
+    def test_unsaved_edge_voice_can_be_previewed(self):
+        values = self._edge_form()
+        values["preview_text"] = "This is a preview."
+        response = self._post("/ui/actions/voices/preview", values)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Preview queued", response.text)
+        self.assertEqual(self.preview_calls[0]["text"], "This is a preview.")
+        self.assertEqual(
+            self.preview_calls[0]["profile"]["config"]["voice"],
+            "en-AU-NatashaNeural",
+        )
+
+    def test_role_manager_lists_default_voice(self):
+        body = self.client.get("/ui/roles/manage").text
+        self.assertIn("Default ChatTTS", body)
+        self.assertIn("You are Dotty.", body)
 
 class CSRFSigningUnitTests(unittest.TestCase):
     """Direct tests on the sign/unsign helpers in bridge.csrf."""

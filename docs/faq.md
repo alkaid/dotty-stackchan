@@ -31,8 +31,8 @@ See [llm-backends.md](./llm-backends.md) for the full comparison. Any model that
 Almost, and it can be with two swaps:
 
 - **ASR** (speech recognition): already fully local. FunASR runs on your server.
-- **TTS** (speech synthesis): local if you use Piper TTS. EdgeTTS requires internet (it hits Microsoft's servers).
-- **LLM**: local by default — the `dotty-pi` agent runs against a local llama-swap model. Cloud is only used if you switch to a cloud backend or turn on smart-mode.
+- **TTS** (speech synthesis): local with the default ChatTTS voice or Piper. EdgeTTS requires internet (it hits Microsoft's servers).
+- **LLM**: local when `dotty-pi` targets a local llama-swap/Ollama endpoint. Cloud is used only when you configure a cloud backend or cloud-backed tools.
 
 With Piper TTS and the default local model, nothing leaves your LAN. The trade-off is that local LLMs need a GPU or beefy CPU to run at conversational speed.
 
@@ -46,7 +46,7 @@ With Piper TTS and the default local model, nothing leaves your LAN. The trade-o
 
 **Recurring:**
 - Electricity for the host (negligible for most home setups).
-- LLM API costs **only** if you use a cloud backend or turn on smart-mode — the default local model is free beyond electricity. Cloud backends (OpenRouter, OpenAI, etc.) are pay-per-token.
+- LLM API costs **only** if you configure a cloud backend or cloud-backed tool. Smart Mode itself does not select a model. Cloud backends (OpenRouter, OpenAI, etc.) are pay-per-token.
 
 ---
 
@@ -71,9 +71,9 @@ This is a self-hosted system — you control the prompt, the model, and every lo
 
 ### Can I change the robot's personality?
 
-Yes. The persona is a Markdown file in `personas/`. Persona files are baked
-into the model-facing images, so edit the source and rebuild the relevant
-service. See [Change Persona](cookbook/change-persona.md).
+Yes. Use the Bridge **Role** card to add, edit, delete, activate, and assign a
+saved voice. Roles are independent of Kid and Smart modes and apply on the next
+voice turn. See [Change Persona](cookbook/change-persona.md).
 
 There's also a secondary `prompt:` key in `data/.config.yaml` that gets injected as a system message — a useful place for voice-pipeline-level hints. Full instructions: [cookbook/change-persona.md](./cookbook/change-persona.md).
 
@@ -84,9 +84,10 @@ There's also a secondary `prompt:` key in `data/.config.yaml` that gets injected
 Depends on which TTS provider you use:
 
 - **Piper TTS (local):** browse the [piper-voices catalog](https://huggingface.co/rhasspy/piper-voices) on HuggingFace. Dozens of languages and speakers. The reference config uses `en_GB-cori-medium`.
-- **EdgeTTS (cloud):** any Microsoft Edge Neural voice. Hundreds of voices across 70+ languages. Set the voice ID in `data/.config.yaml` under `TTS.EdgeTTS.voice` (e.g., `en-US-AvaNeural`, `en-AU-WilliamNeural`, `ja-JP-NanamiNeural`). Restart the container after changing.
+- **EdgeTTS (cloud):** any Microsoft Edge Neural voice. Hundreds of voices across 70+ languages. Save the voice ID, rate, volume, and pitch in a Bridge Voice profile.
 
-To switch between Piper and EdgeTTS, change the `selected_module` for TTS in `data/.config.yaml` and restart the container.
+Use the Bridge **Voice** card to save and preview ChatTTS or EdgeTTS profiles;
+assign one from each Role's Voice dropdown. Piper remains a manual provider.
 
 ---
 

@@ -14,7 +14,7 @@
 
 Dotty is a fully self-hosted voice stack for the M5Stack StackChan desktop robot. Open-source firmware on the robot, [xiaozhi-esp32-server](https://github.com/xinnan-tech/xiaozhi-esp32-server) for voice I/O, and a local **pi** coding agent as the brain. ASR, TTS, and session state all run on your own hardware. The LLM is pluggable: the shipped configuration targets a sub2api-compatible endpoint with separate normal and `think_hard` model IDs. Enable the bundled [Ollama profile](./docs/cookbook/run-fully-local.md), use [llama-swap](./docs/cookbook/llama-swap-concurrent-models.md), or point at another OpenAI-compatible API.
 
-Out of the box, Dotty ships in **Kid Mode** — the persona and per-turn prompt sandwich steer responses toward age-appropriate topics, while a thin blocked-words filter replaces matching spoken turns before TTS. The filter is a bypassable backstop, not a safety guarantee or substitute for supervision. Disable Kid Mode for a general-purpose assistant.
+Out of the box, Dotty ships with **Kid Mode** enabled. It adds age-appropriate per-turn constraints and a thin blocked-words filter around the independently selected Role; it does not replace the Role's personality or voice. The filter is a bypassable backstop, not a safety guarantee or substitute for supervision. Disable Kid Mode to remove those extra guardrails.
 
 ## Why I built this
 
@@ -30,9 +30,10 @@ Full policy: [`AI_TRANSPARENCY.md`](./AI_TRANSPARENCY.md).
 
 ## Features
 
-- **Kid Mode (on by default)** — age-appropriate responses via persona + per-turn prompt steering. An output content filter is planned, not yet shipped ([#138](https://github.com/BrettKinny/dotty-stackchan/issues/138)); Kid Mode is not a substitute for supervision. Toggle off for general-purpose use. See [`docs/kid-mode.md`](./docs/kid-mode.md).
+- **Roles and voices** — create, edit, activate, and delete independent personality prompts in Bridge, then assign each Role a saved ChatTTS or EdgeTTS voice. Voice profiles can be previewed on the connected robot before saving.
+- **Kid Mode (on by default)** — adds age-appropriate prompt constraints, camera-tool restrictions, and a thin output filter around the active Role. It does not select a personality, voice, or model. Kid Mode is not a substitute for supervision. See [`docs/kid-mode.md`](./docs/kid-mode.md).
 - **Local ASR** — FunASR SenseVoiceSmall by default, no cloud transcription. WhisperLocal can be selected explicitly on GPU hosts for better kid-speech accuracy; SenseVoiceOnnx is a lighter low-RAM option.
-- **Bilingual local TTS** — ChatTTS handles Chinese, English, and mixed replies on CPU or NVIDIA GPU; Piper and EdgeTTS remain available as fallbacks.
+- **Configurable TTS** — save and preview local bilingual ChatTTS or cloud EdgeTTS profiles per Role; Piper remains available as a manual offline fallback.
 - **Streaming responses** — the bridge streams LLM output to the voice pipeline for lower perceived latency.
 - **Emoji expressions** — every response starts with an emoji that the firmware maps to a face animation (smile, laugh, sad, surprise, thinking, angry, love, sleepy, neutral).
 - **Voice tools** — the pi agent can search its memory, escalate hard questions to a bigger model, take a photo, and play songs, all mid-conversation.
@@ -67,7 +68,7 @@ Full state taxonomy, colour palette, transition diagram, and per-state backing a
 
 ## Web dashboard (locally hosted)
 
-The dashboard service serves a web dashboard at `http://<DEPLOY_HOST>:8081/ui` — host status, mode toggles (Kid Mode / Smart Mode), runtime model and device-endpoint configuration, state switcher, perception card (face / identity), emoji presets, and a live event log (turns, perception events, errors). Light and dark themes follow the system preference. It runs as a small FastAPI service (`bridge.py`) on your own hardware — no external service ever sees your data.
+The dashboard service serves a web dashboard at `http://<DEPLOY_HOST>:8081/ui` — Role and voice libraries, voice preview, mode toggles (Kid Mode / Smart Mode), runtime model and device-endpoint configuration, state switcher, perception card (face / identity), emoji presets, and a live event log (turns, perception events, errors). Light and dark themes follow the system preference. It runs as a small FastAPI service (`bridge.py`) on your own hardware; only EdgeTTS previews/speech use Microsoft's service.
 
 <p align="center">
   <img src="docs/assets/dashboard-light.png" alt="Dotty dashboard — light theme" width="48%">
