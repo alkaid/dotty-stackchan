@@ -23,7 +23,7 @@ DOTTY_KID_MODE=true
 DOTTY_KID_MODE=false
 ```
 
-When disabled, Dotty still enforces English-only replies, emoji prefix, and
+When disabled, Dotty still follows the user's detected language, enforces the emoji prefix, and keeps
 the TTS length rule (default 1-2 short sentences, up to 6 for open-ended
 asks). Only the child-specific rules (4-9) are removed.
 
@@ -94,7 +94,7 @@ weight in transformer models. This means the hard constraints in the suffix
 are the last thing the model reads before generating its reply, making them
 the hardest to override. When `kid_mode` is true the suffix carries the full
 child-safe topic constraints (rules 4-9 below); when false, only the
-English-only / emoji-leader / length rules remain.
+automatic language matching / emoji-leader / length rules remain.
 
 **Why a suffix, not just a system prompt?** System prompts are seen once and
 can be diluted by long conversations. The suffix is re-injected on every
@@ -124,9 +124,10 @@ in `custom-providers/textUtils.py`:
 ```
 HARD CONSTRAINTS for THIS reply (overrides everything else):
 
-1. Reply in ENGLISH ONLY. Even if the user message is unclear, in another
-   language, or you'd naturally pick Chinese -- your reply is English.
-   No Chinese, no Japanese.
+1. Reply in the SAME PRIMARY LANGUAGE as the user's latest spoken message.
+   If a RESPONSE_LANGUAGE marker is present, follow it. For mixed-language
+   input, use the language carrying the main request. Do not default to
+   English because the system prompt is written in English.
 
 2. First character of your reply MUST be exactly one of these emojis:
    😊 😆 😢 😮 🤔 😠 😐 😍 😴

@@ -82,9 +82,11 @@ class TestSandwichInjection(unittest.TestCase):
         list(provider.response("sess-1", [{"role": "user", "content": "Hi"}]))
         expected = "Hi" + textUtils.build_turn_suffix(False)
         self.assertEqual(client.prompts[0], expected)
-        # Adult mode: still has emoji-prefix / English-only / no-Markdown
+        # Adult mode: still has emoji-prefix / language matching / no-Markdown
         # bullets, but NOT the kid-specific ones.
         self.assertIn("EXACTLY ONE emoji", client.prompts[0])
+        self.assertIn("SAME PRIMARY LANGUAGE", client.prompts[0])
+        self.assertNotIn("ENGLISH ONLY", client.prompts[0])
         self.assertNotIn("YOUNG CHILD", client.prompts[0])
 
     def test_wrap_helper_pure(self):
@@ -94,6 +96,19 @@ class TestSandwichInjection(unittest.TestCase):
         wrapped = _wrap_with_sandwich("hi", True)
         self.assertTrue(wrapped.startswith("hi"))
         self.assertEqual(wrapped, "hi" + textUtils.build_turn_suffix(True))
+
+    def test_chinese_turn_keeps_chinese_response_policy(self):
+        wrapped = _wrap_with_sandwich("你好，我是测试设备。", False)
+        self.assertTrue(wrapped.startswith("你好，我是测试设备。"))
+        self.assertIn("SAME PRIMARY LANGUAGE", wrapped)
+        self.assertNotIn("ENGLISH ONLY", wrapped)
+
+    def test_asr_language_tag_builds_explicit_response_instruction(self):
+        instruction = textUtils.build_response_language_instruction("zh-CN")
+        self.assertIn("RESPONSE_LANGUAGE:zh", instruction)
+        self.assertIn("Simplified Chinese", instruction)
+        self.assertIn("Do not translate", instruction)
+        self.assertEqual(textUtils.build_response_language_instruction("auto"), "")
 
 
 class TestEmptyTurn(unittest.TestCase):

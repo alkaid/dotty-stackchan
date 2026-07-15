@@ -12,6 +12,7 @@ from core.utils.util import audio_to_data
 from core.handle.abortHandle import handleAbortMessage
 from core.handle.intentHandler import handle_user_intent
 from core.utils.output_counter import check_device_output_limit
+from core.utils.textUtils import build_response_language_instruction
 from core.handle.sendAudioHandle import send_stt_message, SentenceType
 
 TAG = __name__
@@ -653,11 +654,16 @@ def _with_room_view_marker(
 
 def _submit_chat(conn: "ConnectionHandler", text: str) -> None:
     """Submit `text` to the LLM via the connection's executor, with
-    the room-view marker prepended automatically when a fresh
-    description is cached. Single chokepoint for description
-    propagation — every voice path goes through here.
+    room-view and ASR language context attached automatically. Single
+    chokepoint for metadata propagation — every voice path goes through here.
     """
-    conn.executor.submit(conn.chat, _with_room_view_marker(conn, text))
+    prompt = _with_room_view_marker(conn, text)
+    language_instruction = build_response_language_instruction(
+        getattr(conn, "_response_language", None)
+    )
+    if language_instruction:
+        prompt = f"{prompt}\n\n{language_instruction}"
+    conn.executor.submit(conn.chat, prompt)
 
 
 # ---------- Dance / singing mode ----------
@@ -801,8 +807,8 @@ async def _handle_dance(conn: "ConnectionHandler", dance_name: str) -> None:
             f"({len(opus_packets)} packets @ {conn.sample_rate}Hz)"
         )
     else:
-        conn.executor.submit(
-            conn.chat,
+        _submit_chat(
+            conn,
             f"[DANCE:{dance_name}] You're about to dance the {dance_name.title()}! "
             f"Say a SHORT excited one-liner intro (under 15 words). "
             f"Example: '\U0001f606 {dance['intro']}'",
@@ -1062,6 +1068,8 @@ async def startToChat(conn: "ConnectionHandler", text):
     except (json.JSONDecodeError, KeyError):
         pass
 
+    conn._response_language = _language_tag
+
     if _is_noise(actual_text):
         conn.logger.bind(tag=TAG).info(f"ASR noise rejected: {actual_text!r}")
         return
@@ -1128,8 +1136,8 @@ async def startToChat(conn: "ConnectionHandler", text):
             f"Wake phrase: {current_state} -> idle"
         )
         await _send_set_state(conn, "idle")
-        conn.executor.submit(
-            conn.chat,
+        _submit_chat(
+            conn,
             "[STATE_WAKE] You just woke up. Say only a SHORT greeting "
             "(under 10 words). Examples: 'I'm here!' / 'Hello again.'",
         )
@@ -1142,8 +1150,8 @@ async def startToChat(conn: "ConnectionHandler", text):
             f"State phrase: {current_state} -> {target_state}"
         )
         await _send_set_state(conn, target_state)
-        conn.executor.submit(
-            conn.chat,
+        _submit_chat(
+            conn,
             f"[STATE_CHANGE:{target_state}] You just entered {target_state} "
             f"state. Say only a SHORT one-liner (under 12 words). "
             f"Suggested: {ack_hint!r}",
@@ -1152,8 +1160,8 @@ async def startToChat(conn: "ConnectionHandler", text):
 
     if _is_help_request(user_text):
         conn.logger.bind(tag=TAG).info(f"Help intent detected: {user_text[:60]}")
-        conn.executor.submit(
-            conn.chat,
+        _submit_chat(
+            conn,
             "[HELP_SUMMARY] The user asked what you can do. Reply in 2-3 short "
             "sentences listing your main abilities, in plain spoken language: "
             "you can chat, look around with your camera (\"what do you see\"), "

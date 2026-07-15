@@ -13,28 +13,27 @@ Symptom-first lookup table covering common and obscure failure modes. Pair with 
 
 **Symptom:** The robot appears to process the utterance (logs show ASR text and an LLM response), but no audio plays back. The TTS stage produces zero-length or near-zero-length audio.
 
-**Cause:** Language mismatch between the TTS voice and the response text. EdgeTTS `en-*` voices return empty audio when given non-English text (Chinese, Japanese, etc.). This is not a throttle or rate limit — it's a silent failure in the EdgeTTS service.
+**Cause:** Language mismatch between the TTS voice and the response text. The response language follows ASR, but a fixed-language TTS voice cannot synthesize every language. The default local Piper voice is `en_GB-cori-medium`; it does not select another voice automatically.
 
 **Fix:**
-1. Check the xiaozhi-server logs for the LLM response text. If it contains non-English characters, the LLM is ignoring the English enforcement in the persona prompt and the `.config.yaml` `prompt:` block.
-2. Confirm English enforcement is active: check `personas/dotty_voice.md` and the top-level `prompt:` in `data/.config.yaml` both contain explicit English-only instructions.
-3. Check `data/.config.yaml` to confirm the TTS voice matches the expected response language (e.g., `en-AU-WilliamNeural` for English).
-4. If using Piper TTS instead of EdgeTTS, confirm the selected voice model matches the response language.
+1. Check the xiaozhi-server logs for the ASR language tag and LLM response text.
+2. Check `data/.config.yaml` to confirm the TTS voice supports that response language.
+3. If using Piper, install and select a model for the required language; one Piper model does not provide automatic multilingual routing.
+4. If using EdgeTTS, select a voice compatible with the response language.
 
 ---
 
-## Robot responds in Chinese / Japanese instead of English
+## Reply language does not match the speaker
 
-**Symptom:** The robot speaks, but in the wrong language. Logs show Chinese or Japanese text in the LLM response.
+**Symptom:** ASR detects one language, but the LLM reply uses another language.
 
-**Cause:** The LLM (Qwen3) is ignoring the system prompt's language constraint. This is a known weakness — Qwen3 tends to leak Chinese on long-context English-only prompts, especially mid-session.
+**Cause:** The ASR language marker was not propagated to the LLM prompt, or a stale image still contains the retired `ENGLISH ONLY` per-turn constraint.
 
 **Fix:**
-1. Confirm the per-turn sandwich enforcement is active on the live `PiVoiceLLM` path. Static system prompts alone are not enough — every turn is wrapped with an explicit English+emoji suffix. This is `build_turn_suffix()` in `custom-providers/textUtils.py`, applied by `custom-providers/pi_voice/pi_voice.py` (`_wrap_with_sandwich`). (The old `bridge.py::_build_sandwich_prompt` was part of the retired ZeroClaw bridge and no longer exists — the bridge is not in the voice path.)
-2. Confirm the persona prompt reinforces English-only: check `personas/dotty_voice.md` (loaded by the `dotty-pi` agent) and the top-level `prompt:` block in `data/.config.yaml`.
-3. Watch the actual voice path while testing: `docker compose logs -f dotty-pi xiaozhi-esp32-server`.
-4. If the leak happens on the first turn, check the persona file (`personas/dotty_voice.md`) for any non-English text.
-5. As a last resort, the ASR may be mis-transcribing English as another language. Check the `ASR.FunASR.language` key in `data/.config.yaml` is set to `en` (not `auto`).
+1. Confirm `ASR.FunASR.language` is `auto` and the xiaozhi log reports the expected detected language.
+2. Confirm the submitted prompt contains `[RESPONSE_LANGUAGE:<tag>]` and the per-turn suffix says `SAME PRIMARY LANGUAGE`.
+3. Rebuild the Xiaozhi application image after changing `receiveAudioHandle.py` or `custom-providers/textUtils.py`.
+4. Watch the live path while testing: `docker compose logs -f dotty-pi xiaozhi-esp32-server`.
 
 ---
 

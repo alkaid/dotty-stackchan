@@ -1,13 +1,19 @@
 ---
 title: Swap Voice
-description: Change the TTS voice for Piper (local) or EdgeTTS (cloud).
+description: Change the ChatTTS speaker or switch to Piper/EdgeTTS.
 ---
 
 # Swap Voice
 
-Two TTS backends, both configured in `.config.yaml`. For a curated list
+Three TTS backends are configured in `.config.yaml`. For a curated list
 of voices that suit Dotty's persona (with character notes and best-for
 hints) see the [Voice Catalog](../voice-catalog.md).
+
+## ChatTTS (default, bilingual)
+
+ChatTTS uses one speaker for Chinese, English, and mixed text. Change the
+integer `TTS.ChatTTS.seed` to choose another deterministic speaker, then
+restart xiaozhi-server. Its official model weights are CC BY-NC 4.0.
 
 ## Piper (local, offline)
 

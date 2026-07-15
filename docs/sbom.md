@@ -95,7 +95,7 @@ git submodule update --init --recursive
   ],
   "containers": [
     {
-      "image": "xiaozhi-esp32-server-piper:local",
+      "image": "xiaozhi-esp32-server-chattts:local",
       "digest": null
     }
   ],

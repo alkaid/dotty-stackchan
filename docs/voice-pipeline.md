@@ -8,7 +8,7 @@ description: xiaozhi-esp32-server pipeline stages -- VAD, ASR, LLM proxy, and TT
 ## TL;DR
 
 - **Server** is `xinnan-tech/xiaozhi-esp32-server` running in Docker on a Linux host. Plugin-based: each of VAD, ASR, LLM, TTS, Memory, Intent is a swappable provider picked via `data/.config.yaml`'s `selected_module:` block.
-- Our live pipeline: **SileroVAD** (speech-end) → **FunASR SenseVoiceSmall** (`auto` language, CUDA when available) → **PiVoiceLLM** custom provider (current default; HTTP RPC to the `dotty-pi` container) or **OpenAICompat** (alternate; points straight at any OpenAI-compatible endpoint) → **LocalPiper** en_GB-cori-medium (TTS; EdgeTTS / StreamingEdgeTTS as alternates). WhisperLocal remains an explicit manual alternative.
+- Our live pipeline: **SileroVAD** (speech-end) → **FunASR SenseVoiceSmall** (`auto` language, CUDA when available) → **PiVoiceLLM** custom provider (current default; HTTP RPC to the `dotty-pi` container) or **OpenAICompat** → bilingual **ChatTTS** (CUDA when available; Piper and EdgeTTS fallbacks). WhisperLocal remains an explicit manual alternative.
 - The xiaozhi container also runs a perception relay (`EventTextMessageHandler`) that forwards firmware `face_detected` / `face_lost` / `sound_event` / `state_changed` frames to `dotty-behaviour`'s `/api/perception/event`.
 - **Emotion** is not a pipeline stage — it's extracted post-hoc from the LLM's emoji prefix and emitted as a separate WS frame. See [protocols.md](./protocols.md#emotion-protocol).
 - Custom providers are copied into the image by the root Dockerfile at `/opt/xiaozhi-esp32-server/core/providers/{asr,tts,llm}/…`.
@@ -31,7 +31,7 @@ From the `xinnan-tech/xiaozhi-esp32-server` README (see [references.md](./refere
 | **Intent** | intent_llm, function_call, nointent |
 | **Knowledge base** | RagFlow |
 
-**What we use:** SileroVAD + FunASR (patched) + custom PiVoiceLLM + LocalPiper (or EdgeTTS on rollback). Every other row is unused.
+**What we use:** SileroVAD + FunASR (patched) + custom PiVoiceLLM + ChatTTS (Piper or EdgeTTS on rollback). Every other row is unused.
 
 ## Our deployed stages
 
@@ -81,14 +81,28 @@ Custom provider at `custom-providers/openai_compat/openai_compat.py`. Talks dire
 
 `custom-providers/xiaozhi-patches/textMessageHandlerRegistry.py` adds an `EventTextMessageHandler` that intercepts firmware `event` frames over the WS and POSTs each one to `dotty-behaviour`'s `/api/perception/event`. This is what feeds the `dotty-behaviour` perception consumers — see [architecture.md](./architecture.md#perception-event-bus).
 
-### TTS — LocalPiper (active) / EdgeTTS (rollback)
+### TTS — ChatTTS (active) / LocalPiper and EdgeTTS (rollback)
 
-**Active: Piper local.**
+**Active: ChatTTS local.**
+
+- One model handles Chinese, English, and mixed-language sentences without a
+  language selector. It outputs 24 kHz PCM, which the provider incrementally
+  converts into the device protocol's 60 ms Opus frames.
+- `device: auto` selects CUDA when available and CPU otherwise. On the reference
+  RTX 5070 Ti, the model uses about 1.14 GB peak VRAM; measured synthesis was
+  0.59 s for a 2.20 s English sample and 1.55 s for the first 2.19 s Chinese
+  sample, including first-run warm-up.
+- The speaker is stable across restarts through `TTS.ChatTTS.seed`. Model files
+  live under `models/chattts/` and are SHA-256 validated at load time.
+- License: code AGPLv3+; official model weights CC BY-NC 4.0. This configuration
+  is for personal, non-commercial use.
+
+**Rollback: Piper local.**
 - Engine: piper-tts 1.4.2 on ONNX runtime.
 - Voice: `en_GB-cori-medium` (Piper "medium" quality tier, British English).
 - Voice files (~63 MB total): `.onnx` + `.onnx.json` sibling, fetched from `huggingface.co/rhasspy/piper-voices`.
 - Measured on a modest i5-3570 Docker host: 0.22 s synth for 2.8 s of audio — 12.7× realtime.
-- Image: `xiaozhi-esp32-server-piper:local` (local `Dockerfile` extends the upstream image with piper-tts).
+- Piper remains installed in `xiaozhi-esp32-server-chattts:local` for config-only rollback.
 - Runs fully offline — no external HTTP calls.
 - **License note (unverified).** Piper voices are MIT-licensed as a repo, but individual voices carry their own upstream license depending on training data. Verify the Cori-specific voice license before redistributing your robot's recordings beyond personal use. Starting point: [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices).
 
@@ -103,7 +117,10 @@ One-line rollback command is in `../README.md` → "Common ops".
 
 ## Custom provider mechanism
 
-xiaozhi-server discovers providers by module path. `selected_module.TTS: LocalPiper` resolves to `core/providers/tts/piper_local` (snake_case of the module dir), and the server imports its class. Docker volume-mounting a local file *over* the container's baked-in file is therefore enough to patch or replace a provider — no image rebuild required for single-file overrides.
+xiaozhi-server discovers providers by module path. `selected_module.TTS: ChatTTS`
+uses `TTS.ChatTTS.type: chattts_local`, which resolves to
+`core/providers/tts/chattts_local.py`. Provider source is baked into the image;
+model weights remain a read-only runtime mount.
 
 **Implication for upgrades.** When the upstream image changes, the mount still works as long as:
 1. The provider-directory convention hasn't changed.

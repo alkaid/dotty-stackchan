@@ -9,6 +9,12 @@ PIPER_JSON       := en_GB-cori-medium.onnx.json
 WHISPER_REPO     := https://huggingface.co/Systran/faster-whisper-small.en
 WHISPER_DIR      := models/whisper-small.en-ct2
 WHISPER_FILES    := config.json model.bin tokenizer.json vocabulary.txt
+CHAT_TTS_REPO    ?= https://hf-mirror.com/2Noise/ChatTTS
+CHAT_TTS_DIR     := models/chattts
+CHAT_TTS_FILES   := asset/Decoder.safetensors asset/DVAE.safetensors \
+	asset/Embed.safetensors asset/Vocos.safetensors asset/gpt/config.json \
+	asset/gpt/model.safetensors asset/tokenizer/special_tokens_map.json \
+	asset/tokenizer/tokenizer_config.json asset/tokenizer/tokenizer.json
 
 # ── Colours ──────────────────────────────────────────────────────────
 GREEN  := \033[0;32m
@@ -379,7 +385,7 @@ SENSEVOICE_STALE := tokens.json chn_jpn_yue_eng_ko_spectral.fbank.conf.yaml
 SENSEVOICE_DIR   := models/SenseVoiceSmall
 PIPER_DIR        := models/piper
 
-fetch-models: ## Download SenseVoiceSmall + Piper voice models
+fetch-models: ## Download SenseVoiceSmall + ChatTTS models (plus fallback voices)
 	@echo ""
 	@echo -e "$(BOLD)Fetching models...$(RESET)"
 	@echo ""
@@ -394,6 +400,36 @@ fetch-models: ## Download SenseVoiceSmall + Piper voice models
 	  else \
 	    echo "  Downloading $$f ..."; \
 	    dl_file "$(SENSEVOICE_REPO)/resolve/main/$$f" "$(SENSEVOICE_DIR)/$$f" || exit 1; \
+	  fi; \
+	done
+	@echo ""
+	@# ── ChatTTS bilingual voice ──
+	@mkdir -p $(CHAT_TTS_DIR)
+	@echo -e "$(BOLD)[ChatTTS 0.2.5 — Chinese/English, CC BY-NC 4.0]$(RESET)"
+	@$(DL_FILE); chattts_sha() { case "$$1" in \
+	  asset/Decoder.safetensors) echo 77aa55e0a977949c4733df3c6f876fa85860d3298cba63295a7bc6901729d4e0 ;; \
+	  asset/DVAE.safetensors) echo 1d0b044a8368c0513100a2eca98456b289e6be6a18b7a63be1bcaa315ea874d9 ;; \
+	  asset/Embed.safetensors) echo 2ff0be7134934155741b643b74e32fb6bf3eec41257984459b2ed60cdb4c48b0 ;; \
+	  asset/Vocos.safetensors) echo 07e5561491cce41f7f90cfdb94b2ff263ff5742c3d89339db99b17ad82cc3f44 ;; \
+	  asset/gpt/config.json) echo 0aaa1ecd96c49ad4f473459eb1982fa7ad79fa5de08cde2781bf6ad1f9a0c236 ;; \
+	  asset/gpt/model.safetensors) echo cd0806fd971f52f6a22c923ec64982b305e817bcc41ca83417fcf9141b984a0f ;; \
+	  asset/tokenizer/special_tokens_map.json) echo bd0ac9d9bb1657996b5c5fbcaa7d80f8de530d01a283da97f89deae5b1b8d011 ;; \
+	  asset/tokenizer/tokenizer_config.json) echo 43e9d658b554fa5ee8d8e1d763349323bfef1ed7a89c0794220ab8861387d421 ;; \
+	  asset/tokenizer/tokenizer.json) echo 843838a64e121e23e774cc75874c6fe862198d9f7dd43747914633a8fd89c20e ;; \
+	esac; }; \
+	for f in $(CHAT_TTS_FILES); do \
+	  dest="$(CHAT_TTS_DIR)/$$f"; \
+	  expected="$$(chattts_sha "$$f")"; \
+	  mkdir -p "$$(dirname "$$dest")"; \
+	  if [ -f "$$dest" ] && printf '%s  %s\n' "$$expected" "$$dest" | sha256sum --check --status; then \
+	    echo -e "  $(GREEN)$$f — already exists, skipping$(RESET)"; \
+	  else \
+	    rm -f "$$dest"; \
+	    echo "  Downloading $$f ..."; \
+	    dl_file "$(CHAT_TTS_REPO)/resolve/main/$$f" "$$dest" || exit 1; \
+	    printf '%s  %s\n' "$$expected" "$$dest" | sha256sum --check --status || { \
+	      echo -e "  $(RED)$$f — SHA-256 mismatch$(RESET)"; rm -f "$$dest"; exit 1; \
+	    }; \
 	  fi; \
 	done
 	@echo ""

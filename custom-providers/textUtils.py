@@ -23,14 +23,16 @@ _SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?。！？])\s+")
 
 # Hardened HARD CONSTRAINTS suffix used at the end of every voice prompt.
 # This is the post-"trailing emoji proliferation" version: explicit
-# "EXACTLY ONE … NO OTHER EMOJIS", Korean blocked, Markdown blocked.
+# "EXACTLY ONE … NO OTHER EMOJIS", automatic reply language, Markdown blocked.
 # Was previously duplicated in bridge.py and openai_compat.py with drift
 # (openai_compat had the older softer wording — folding it in tightens
 # its behaviour to match bridge.py).
 _BASE_SUFFIX = (
     "\n\n---\nHARD CONSTRAINTS for THIS reply (overrides everything else):\n"
-    "1. Reply in ENGLISH ONLY. Even if the user message is unclear, in another language, "
-    "or you'd naturally pick Chinese — your reply is English. No Chinese, no Japanese, no Korean.\n"
+    "1. Reply in the SAME PRIMARY LANGUAGE as the user's latest spoken message. "
+    "If a RESPONSE_LANGUAGE marker is present, follow it. For mixed-language input, "
+    "use the language carrying the main request. Never default to English merely because "
+    "the system prompt or these constraints are written in English.\n"
     "2. Your reply contains EXACTLY ONE emoji from this set as the first character — "
     "and NO OTHER EMOJIS anywhere in the reply: 😊 😆 😢 😮 🤔 😠 😐 😍 😴\n"
     "3. Length: default 1-2 short TTS-friendly sentences. For open-ended asks "
@@ -61,6 +63,30 @@ def build_turn_suffix(kid_mode: bool) -> str:
     KID_MODE at process start (their snapshot) and pass it in.
     """
     return _BASE_SUFFIX + (_KID_MODE_SUFFIX if kid_mode else "") + "Begin your reply now."
+
+
+_RESPONSE_LANGUAGE_NAMES = {
+    "zh": "Simplified Chinese",
+    "en": "English",
+    "yue": "Cantonese Chinese",
+    "ja": "Japanese",
+    "ko": "Korean",
+}
+
+
+def build_response_language_instruction(language: str | None) -> str:
+    """Translate an ASR language tag into a private per-turn LLM instruction."""
+    tag = str(language or "").strip().lower().replace("_", "-")
+    if not tag or tag in {"auto", "nospeech"}:
+        return ""
+    canonical = "yue" if tag.startswith("yue") else tag.split("-", 1)[0]
+    name = _RESPONSE_LANGUAGE_NAMES.get(canonical)
+    if not name:
+        return ""
+    return (
+        f"[RESPONSE_LANGUAGE:{canonical}] Reply in {name}, matching the "
+        "speaker's detected language. Do not translate the reply to English."
+    )
 
 
 # ── Kid-mode blocked-content filter — pure core (#157) ────────────────────

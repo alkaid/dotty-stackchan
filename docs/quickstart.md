@@ -14,25 +14,27 @@ alternative configurations.
 | Item | Notes |
 |------|-------|
 | **M5Stack CoreS3 + StackChan servo kit** | The robot. See [hardware.md](hardware.md) for details. |
-| **Linux or macOS host with Docker** | Runs all four server-side containers. Any distro works. **No GPU required** for the default stack — see [Server hardware](#server-hardware) below. |
+| **Linux host with Docker** | Runs all four server-side containers. An NVIDIA GPU is recommended but not required — see [Server hardware](#server-hardware) below. |
 | **2.4 GHz WiFi** | The ESP32-S3 does not support 5 GHz. |
 
 ### Server hardware
 
-The default stack is **CPU-only — no GPU is required.** The voice pipeline
-ships with [FunASR](https://github.com/modelscope/FunASR) SenseVoiceSmall for
-ASR and [Piper](https://github.com/rhasspy/piper) (`LocalPiper`) for TTS, both
-of which run comfortably on a modern multi-core x86-64 or Apple Silicon CPU.
+The default voice pipeline uses [FunASR](https://github.com/modelscope/FunASR)
+SenseVoiceSmall for ASR and bilingual
+[ChatTTS](https://github.com/2noise/ChatTTS) for local Chinese/English TTS.
+`make setup` uses CUDA when the NVIDIA Container Toolkit is available and
+otherwise falls back to CPU.
 
 | Scenario | Needs a GPU? | Notes |
 |----------|--------------|-------|
-| **Default** (FunASR ASR + LocalPiper TTS + a **cloud** LLM via OpenRouter/OpenAI-compatible key) | No | Any 64-bit Linux/macOS host with Docker and ~4 GB free RAM. This is the Quickstart happy path. |
+| **Default** (FunASR ASR + ChatTTS + a **cloud** LLM via OpenRouter/OpenAI-compatible key) | Recommended, not required | Any 64-bit Linux host with Docker and ~6 GB free RAM; CUDA uses about 1.2 GB VRAM for ChatTTS. |
 | `WhisperLocal` ASR instead of FunASR | Yes | `faster-whisper` float16 needs CUDA. Set the ASR and NVIDIA runtime variables shown in [deployment.md](deployment.md#asr-配置). |
 | **Self-hosting the LLM** locally (Ollama / llama-swap instead of a cloud key) | Recommended | VRAM scales with the model — roughly ~5 GB for an 8B model, ~18 GB for a 30B. See [run-fully-local.md](cookbook/run-fully-local.md) and [llama-swap-concurrent-models.md](cookbook/llama-swap-concurrent-models.md). CPU-only inference works but is slow. |
 
 `make setup` reads `.env`, renders `data/.config.yaml`, downloads model
 weights, and builds the tracked `compose.yml`. There is no interactive wizard.
-The portable default is `FunASR/cpu/int8`; GPU ASR is an explicit `.env` choice.
+The default is `ASR_ACCELERATION=auto`: CUDA is selected when available and
+verified through Compose; otherwise FunASR runs on CPU.
 
 ## 1. Flash the firmware
 
@@ -201,6 +203,7 @@ Runtime mounts for `xiaozhi-esp32-server`:
 | `data/.config.yaml` | `/opt/xiaozhi-esp32-server/data/.config.yaml` | Config override (read-only mount) |
 | `models/SenseVoiceSmall/` | `/opt/xiaozhi-esp32-server/models/SenseVoiceSmall/` | ASR weights |
 | `models/piper/` | `/opt/xiaozhi-esp32-server/models/piper/` | Piper TTS voice models (`.onnx` + `.json`) |
+| `models/chattts/` | `/opt/xiaozhi-esp32-server/models/chattts/` | ChatTTS bilingual model weights (read-only) |
 | `models/whisper-small.en-ct2/` | `/opt/xiaozhi-esp32-server/models/whisper-small.en-ct2/` | Optional Whisper ASR weights |
 | `data/bin/` | `/opt/xiaozhi-esp32-server/data/bin/` | OTA firmware files |
 | `tmp/` | `/opt/xiaozhi-esp32-server/tmp/` | Scratch |
@@ -255,7 +258,13 @@ curl http://<DEPLOY_HOST>:8081/health
 ```
 
 ### Changing voice
-The default TTS is `LocalPiper` (offline, runs inside the container). To change the Piper voice, edit `TTS.LocalPiper.voice` and the corresponding `model_path` / `config_path` in `data/.config.yaml`. To switch to cloud EdgeTTS instead, set `selected_module.TTS: EdgeTTS` and edit `TTS.EdgeTTS.voice` (any Microsoft Edge Neural voice ID works, e.g. `en-US-AvaNeural`). Restart the container after changes.
+The default TTS is `ChatTTS`, using one deterministic speaker for Chinese,
+English, and mixed text. Change `TTS.ChatTTS.seed` to select another stable
+speaker. Set `selected_module.TTS: LocalPiper` for the lightweight offline
+fallback, or `EdgeTTS` for a cloud voice. Restart xiaozhi-server after changes.
+
+ChatTTS code is AGPLv3+ and its official weights are CC BY-NC 4.0. The default
+is intended for this project's personal, non-commercial deployment.
 
 ### Changing persona (the robot's personality)
 Edit `personas/dotty_voice.md`, then rebuild `dotty-pi` because persona files

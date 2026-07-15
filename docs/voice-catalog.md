@@ -44,7 +44,8 @@ needed.
 | `en_GB-alba-medium`              | en_GB  | medium  | Scottish, cosy      | Both          | ~63 MB |
 | `en_GB-semaine-medium`           | en_GB  | medium  | Neutral UK          | Adult         | ~63 MB |
 
-The default voice that ships with `make fetch-models` is
+The default TTS is bilingual ChatTTS. The Piper fallback voice that ships with
+`make fetch-models` is
 `en_GB-cori-medium` — a safe, friendly starting point.
 
 ### Notes on quality tiers
@@ -96,7 +97,8 @@ in place, then restart the server: `docker compose restart xiaozhi-esp32-server`
 ## How to switch voices
 
 See [Swap Voice](cookbook/swap-voice.md) for the full walkthrough on
-editing `.config.yaml` for either backend. The short version:
+editing `.config.yaml` for the ChatTTS, Piper, or EdgeTTS backends. The Piper
+short version:
 
 ```yaml
 selected_module:

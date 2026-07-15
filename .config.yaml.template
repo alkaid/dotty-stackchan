@@ -19,7 +19,7 @@ selected_module:
   ASR: <ASR_MODULE>       # FunASR by default; WhisperLocal is manual-only
   LLM: PiVoiceLLM         # default: agent loop hosted in the dotty-pi container (requires the sibling dotty-pi service)
   # LLM: OpenAICompat      # <-- alternate: direct OpenAI-compatible LLM
-  TTS: LocalPiper
+  TTS: ChatTTS
   Memory: nomem
   Intent: nointent
 
@@ -87,6 +87,21 @@ ASR:
     initial_prompt: null
 
 TTS:
+  ChatTTS:
+    type: chattts_local
+    model_path: /opt/xiaozhi-esp32-server/models/chattts
+    # One bilingual model handles Chinese, English, and mixed text directly.
+    device: auto
+    seed: 42
+    temperature: 0.3
+    top_p: 0.7
+    top_k: 20
+    refine_prompt: "[oral_2][laugh_0][break_4]"
+    code_prompt: "[speed_5]"
+    stream_batch: 24
+    stream_speed: 12000
+    pass_first_n_batches: 2
+    output_dir: tmp/
   EdgeTTS:
     type: edge
     voice: en-AU-WilliamNeural

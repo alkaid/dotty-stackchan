@@ -32,7 +32,7 @@ Full policy: [`AI_TRANSPARENCY.md`](./AI_TRANSPARENCY.md).
 
 - **Kid Mode (on by default)** — age-appropriate responses via persona + per-turn prompt steering. An output content filter is planned, not yet shipped ([#138](https://github.com/BrettKinny/dotty-stackchan/issues/138)); Kid Mode is not a substitute for supervision. Toggle off for general-purpose use. See [`docs/kid-mode.md`](./docs/kid-mode.md).
 - **Local ASR** — FunASR SenseVoiceSmall by default, no cloud transcription. WhisperLocal can be selected explicitly on GPU hosts for better kid-speech accuracy; SenseVoiceOnnx is a lighter low-RAM option.
-- **Local or cloud TTS** — Piper (offline) or EdgeTTS (cloud). Swap with a config change.
+- **Bilingual local TTS** — ChatTTS handles Chinese, English, and mixed replies on CPU or NVIDIA GPU; Piper and EdgeTTS remain available as fallbacks.
 - **Streaming responses** — the bridge streams LLM output to the voice pipeline for lower perceived latency.
 - **Emoji expressions** — every response starts with an emoji that the firmware maps to a face animation (smile, laugh, sad, surprise, thinking, angry, love, sleepy, neutral).
 - **Voice tools** — the pi agent can search its memory, escalate hard questions to a bigger model, take a photo, and play songs, all mid-conversation.

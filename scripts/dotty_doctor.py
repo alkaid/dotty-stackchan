@@ -259,6 +259,37 @@ def check_models_piper(config_path: Optional[Path]) -> Result:
     return Result(label, "pass", onnx_files[0].name)
 
 
+CHAT_TTS_REQUIRED = {
+    "asset/Decoder.safetensors": 100_000_000,
+    "asset/DVAE.safetensors": 50_000_000,
+    "asset/Embed.safetensors": 100_000_000,
+    "asset/Vocos.safetensors": 40_000_000,
+    "asset/gpt/config.json": 500,
+    "asset/gpt/model.safetensors": 800_000_000,
+    "asset/tokenizer/special_tokens_map.json": 100,
+    "asset/tokenizer/tokenizer_config.json": 100,
+    "asset/tokenizer/tokenizer.json": 400_000,
+}
+
+
+def check_models_chattts(config_path: Optional[Path]) -> Result:
+    label = "ChatTTS model files present"
+    root = _project_root(config_path)
+    model_dir = root / "models" / "chattts"
+    if not model_dir.is_dir():
+        return Result(label, "fail", f"{model_dir} missing - run `make fetch-models`")
+    problems = []
+    for name, min_size in CHAT_TTS_REQUIRED.items():
+        path = model_dir / name
+        if not path.is_file():
+            problems.append(f"{name} missing")
+        elif path.stat().st_size < min_size:
+            problems.append(f"{name} only {path.stat().st_size} B (corrupt download?)")
+    if problems:
+        return Result(label, "fail", "; ".join(problems) + " - re-run `make fetch-models`")
+    return Result(label, "pass", f"{len(CHAT_TTS_REQUIRED)} required files OK")
+
+
 def check_http(label: str, url: str, timeout: int) -> Result:
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:
@@ -300,6 +331,7 @@ def run_checks(
     results.append(check_config_exists(config_path))
     results.append(check_no_placeholders(config_path))
     results.append(check_models_sensevoice(config_path))
+    results.append(check_models_chattts(config_path))
     results.append(check_models_piper(config_path))
 
     env = _read_env(env_path)

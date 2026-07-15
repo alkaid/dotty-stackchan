@@ -22,3 +22,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --resume-retries 100 --timeout 120 --index-url "$TORCH_INDEX_URL" \
         "$TORCH_WHEEL_BASE_URL/torch-2.7.1%2Bcu128-cp310-cp310-manylinux_2_28_x86_64.whl" \
         "$TORCH_WHEEL_BASE_URL/torchaudio-2.7.1%2Bcu128-cp310-cp310-manylinux_2_28_x86_64.whl"
+
+# Keep TTS dependencies above the application layer but after the expensive,
+# low-churn CUDA layer so provider upgrades do not rebuild PyTorch.
+RUN if [ -n "$PIP_INDEX_URL" ]; then \
+        pip install --no-cache-dir -i "$PIP_INDEX_URL" ChatTTS==0.2.5; \
+    else \
+        pip install --no-cache-dir ChatTTS==0.2.5; \
+    fi

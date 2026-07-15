@@ -16,7 +16,7 @@ services:
       dockerfile: Dockerfile
       args:
         XIAOZHI_BASE_IMAGE: ${XIAOZHI_BASE_IMAGE:-dotty-xiaozhi-base:torch2.7.1-cu128}
-    image: ${XIAOZHI_IMAGE_TAG:-xiaozhi-esp32-server-piper:local}
+    image: ${XIAOZHI_IMAGE_TAG:-xiaozhi-esp32-server-chattts:local}
     restart: unless-stopped
     # make setup resolves this to nvidia/all or runc/void, then runs a
     # provider-specific CUDA probe through this exact service before starting the stack.
@@ -45,6 +45,7 @@ services:
       - ./data/bin:/opt/xiaozhi-esp32-server/data/bin
       - ./models/SenseVoiceSmall:/opt/xiaozhi-esp32-server/models/SenseVoiceSmall:ro
       - ./models/piper:/opt/xiaozhi-esp32-server/models/piper:ro
+      - ./models/chattts:/opt/xiaozhi-esp32-server/models/chattts:ro
       - ./models/whisper-small.en-ct2:/opt/xiaozhi-esp32-server/models/whisper-small.en-ct2:ro
       - ./tmp:/opt/xiaozhi-esp32-server/tmp
       - ${DOTTY_BRIDGE_STATE_DIR:-/mnt/user/appdata/dotty-bridge/state}:/var/lib/dotty-bridge/state:ro

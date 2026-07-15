@@ -7,6 +7,7 @@ COPY custom-providers/openai_compat/*.py /opt/xiaozhi-esp32-server/core/provider
 COPY custom-providers/pi_voice/*.py /opt/xiaozhi-esp32-server/core/providers/llm/pi_voice/
 COPY custom-providers/edge_stream/edge_stream.py /opt/xiaozhi-esp32-server/core/providers/tts/edge_stream.py
 COPY custom-providers/piper_local/piper_local.py /opt/xiaozhi-esp32-server/core/providers/tts/piper_local.py
+COPY custom-providers/chattts_local/chattts_local.py /opt/xiaozhi-esp32-server/core/providers/tts/chattts_local.py
 COPY custom-providers/asr/fun_local.py /opt/xiaozhi-esp32-server/core/providers/asr/fun_local.py
 COPY custom-providers/asr/whisper_local.py /opt/xiaozhi-esp32-server/core/providers/asr/whisper_local.py
 COPY custom-providers/textUtils.py /opt/xiaozhi-esp32-server/core/utils/textUtils.py

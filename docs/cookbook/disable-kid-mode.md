@@ -40,7 +40,7 @@ docker compose up -d
 
 | Rule | Description |
 |---|---|
-| 1 | English-only replies |
+| 1 | Reply in the primary language detected from the user's latest speech |
 | 2 | Emoji prefix (one of the 9 allowed emojis) |
 | 3 | Default 1-2 short sentences, up to 6 for open-ended asks; TTS-friendly |
 

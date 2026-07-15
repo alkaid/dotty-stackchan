@@ -29,7 +29,7 @@ flowchart LR
             VAD["SileroVAD"]
             ASR["FunASR SenseVoiceSmall<br/>/ WhisperLocal"]
             PV["PiVoiceLLM<br/>(default LLM provider)"]
-            TTS["TTS<br/>(LocalPiper default,<br/>EdgeTTS available)"]
+            TTS["TTS<br/>(ChatTTS default,<br/>Piper / EdgeTTS fallback)"]
         end
         PI["dotty-pi<br/>(pi agent container)"]
         BH["dotty-behaviour<br/>FastAPI :8090"]

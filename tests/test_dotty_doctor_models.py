@@ -76,6 +76,25 @@ class TestProjectRoot(unittest.TestCase):
         finally:
             _mod.SENSEVOICE_REQUIRED = orig
 
+    def test_chattts_check_passes_with_models_at_repo_root(self):
+        cfg = self._mk("data", ".config.yaml")
+        orig = _mod.CHAT_TTS_REQUIRED
+        _mod.CHAT_TTS_REQUIRED = {name: 1 for name in orig}
+        try:
+            for name in _mod.CHAT_TTS_REQUIRED:
+                self._mk("models", "chattts", name)
+            res = _mod.check_models_chattts(cfg)
+            self.assertEqual(res.status, "pass", res.detail)
+        finally:
+            _mod.CHAT_TTS_REQUIRED = orig
+
+    def test_chattts_check_rejects_partial_model(self):
+        cfg = self._mk("data", ".config.yaml")
+        self._mk("models", "chattts", "asset", "Decoder.safetensors")
+        res = _mod.check_models_chattts(cfg)
+        self.assertEqual(res.status, "fail")
+        self.assertIn("asset/DVAE.safetensors missing", res.detail)
+
     def test_sensevoice_check_fails_pointing_at_repo_root_models(self):
         cfg = self._mk("data", ".config.yaml")
         res = _mod.check_models_sensevoice(cfg)

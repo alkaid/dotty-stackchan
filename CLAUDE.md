@@ -32,7 +32,7 @@ The voice path runs through a single LLM provider — `PiVoiceLLM`, selected via
                    ▼
                  xiaozhi-esp32-server (Docker)
                    ├─ ASR: FunASR SenseVoiceSmall / WhisperLocal (local)
-                   ├─ TTS: LocalPiper; EdgeTTS / StreamingEdgeTTS alternates
+                   ├─ TTS: ChatTTS; LocalPiper / EdgeTTS alternates
                    └─ LLM: PiVoiceLLM
                         │  PiHttpClient → `http://dotty-pi:8091/turn`
                         ▼
@@ -87,6 +87,7 @@ This repo uses placeholders (`<DEPLOY_HOST>`, `<XIAOZHI_USER>`, `<XIAOZHI_PATH>`
 - `custom-providers/edge_stream/edge_stream.py` — custom streaming TTS provider. Mounted similarly.
 - `custom-providers/openai_compat/openai_compat.py` — OpenAI-compatible LLM provider; the alternate voice backend to `PiVoiceLLM` (point it at a local llama-swap endpoint or any OpenAI-compatible API). Selected when `selected_module.LLM = OpenAICompat`.
 - `custom-providers/piper_local/piper_local.py` — local Piper TTS provider (offline alternative to EdgeTTS).
+- `custom-providers/chattts_local/chattts_local.py` — default bilingual local ChatTTS provider; streams 24 kHz PCM into 60 ms Opus frames and uses CUDA when available.
 - `custom-providers/asr/fun_local.py` — patched FunASR provider. Adds a `language` config key (upstream hardcodes `"auto"`, which mis-detects Korean/Japanese on unclear English). Mounted as a file-level override over the upstream provider.
 - `custom-providers/xiaozhi-patches/{http_server,websocket_server,portal_bridge}.py` — drop-in overrides against upstream xiaozhi-server. Add the `/xiaozhi/admin/*` admin routes (inject-text, abort, set-state, set-toggle, set-head-angles, take-photo, play-asset, songs catalogue, say) and the `active_connections` registry that lets admin routes reach a live device WS. (The `set-tier1slim-model` route and `shared_llm` singleton were removed with Tier1Slim in the 2026-05-29 alignment pass.)
 - `bridge.py` — the **admin dashboard** service (FastAPI, port 8081, served at `/ui`); runs as a container from root `compose.yml`. Its former voice and perception-bus roles were retired in #36; the dashboard now pulls its perception/vision/audio cards from `dotty-behaviour` (#115 series). Supporting modules live under `bridge/`.
@@ -122,12 +123,12 @@ Run `make help` for the full list. Key targets:
 
 - `make setup` — validate `.env`, render config, fetch models, and build/start containers
 - `make doctor` — health checks on config, models, and services
-- `make fetch-models` — download SenseVoiceSmall + Piper voice models
+- `make fetch-models` — download SenseVoiceSmall + ChatTTS and fallback Piper models
 - `make up` / `make down` / `make logs` / `make status` — docker compose shortcuts
 
 ## Common Maintenance Tasks
 
-- **Change TTS voice**: Edit `data/.config.yaml` on the Docker host. For the default `LocalPiper`, swap the `voice` + `model_path` + `config_path` keys (download a new `.onnx` / `.onnx.json` pair into `models/piper/`). For `EdgeTTS` / `StreamingEdgeTTS` alternates, change `TTS.EdgeTTS.voice` / `TTS.StreamingEdgeTTS.voice` and switch `selected_module.TTS`. Restart container.
+- **Change TTS voice**: Edit `TTS.ChatTTS.seed` for another stable bilingual speaker. Switch `selected_module.TTS` to `LocalPiper`, `EdgeTTS`, or `StreamingEdgeTTS` for a fallback, then restart xiaozhi-server.
 - **Change system prompt**: Edit `data/.config.yaml` on the Docker host, top-level `prompt:` block. Restart container.
 - **Check logs**: `ssh <XIAOZHI_USER>@<DEPLOY_HOST> 'cd <XIAOZHI_PATH> && docker compose logs -f xiaozhi-esp32-server'`
 - **Restart pipeline**: `ssh <XIAOZHI_USER>@<DEPLOY_HOST> 'cd <XIAOZHI_PATH> && docker compose restart'`

@@ -102,15 +102,17 @@ See [protocols.md](./protocols.md) for the admin endpoint wire formats.
 
 Previously used by the ZeroClawLLM provider via OpenRouter. Not used in the current architecture.
 
-### Qwen3 caveat — Chinese leak and long-context drift
+### Qwen3 language routing
 
-Qwen3 is multilingual by training and occasionally **leaks Chinese mid-response** when context is long or system-prompt adherence is weakened by MoE expert routing. Observed symptom: the model starts a response in English and drops a Chinese character or phrase partway through; `en-*` EdgeTTS voices return silent audio on non-English input, making it sound like a dead mic.
+Qwen3 is multilingual. Voice turns should follow the language detected by ASR instead of defaulting to the language used by the system prompt.
 
-**Mitigation in the current stack:**
+**Routing in the current stack:**
 
-1. The pi agent persona (`/opt/dotty-pi/personas/dotty_voice.md`) has English hard rules and is baked into the image.
-2. xiaozhi-server's top-level `prompt:` in `data/.config.yaml` is also English-only.
-3. `custom-providers/textUtils.py` appends a per-turn English-only suffix (used by PiVoiceLLM).
+1. FunASR emits a language tag such as `zh` or `en` when `ASR_LANGUAGE=auto`.
+2. `receiveAudioHandle.py` attaches that tag as a private `RESPONSE_LANGUAGE` marker on every voice reply path.
+3. `custom-providers/textUtils.py` appends a per-turn same-language constraint used by PiVoiceLLM and OpenAICompat.
+
+This controls response text and subtitles. The selected TTS provider still needs a voice that supports the resulting language; the default local Piper voice is English-only and does not auto-route voices.
 
 ### dotty-simple / dotty-think (PiVoiceLLM path)
 

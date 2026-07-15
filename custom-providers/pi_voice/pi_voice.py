@@ -98,10 +98,9 @@ def _last_user_text(dialogue: list[dict]) -> str:
 def _wrap_with_sandwich(user_text: str, kid_mode: bool) -> str:
     """Append the HARD CONSTRAINTS suffix to the user's text via the shared
     textUtils.build_turn_suffix contract — emoji-prefix
-    rule, English-only, length caps, kid-mode topic filtering. Without
-    this Dotty drifts into Chinese, multi-paragraph replies, and (in
-    kid_mode) unsafe topics, since the base voice model doesn't encode
-    those constraints."""
+    rule, automatic language matching, length caps, and kid-mode topic
+    filtering. The suffix keeps formatting and safety behavior consistent
+    without overriding the language detected from the user's speech."""
     return user_text + build_turn_suffix(kid_mode)
 
 
