@@ -161,6 +161,8 @@ DOTTY_PI_THINK_MAX_TOKENS=4096
 
 普通对话使用 `DOTTY_PI_MODEL`。`think_hard` 使用 `VOICE_THINKER_MODEL`，并读取同一组 `DOTTY_PI_THINK_*` 参数。`VOICE_THINKER_URL` 留空时，接口地址自动使用 `DOTTY_PI_BASE_URL + /chat/completions`；`VOICE_THINKER_API_KEY` 留空时复用 `DOTTY_PI_API_KEY`。`DOTTY_PI_SYSTEM_PROMPT_FILE` 只能选择镜像内 `/opt/dotty-pi/personas/` 下的文件；修改 persona 源文件后需要重新构建 `dotty-pi`。
 
+bridge 页面右上角的 Configuration 面板可运行时修改普通/深度思考模型、reasoning 开关与 effort，以及设备可见的 WebSocket/OTA 基础地址。`.env` 只提供初始默认值；页面配置原子保存到 `${DOTTY_BRIDGE_STATE_DIR}/state/runtime-config.json`，不会回写 `.env`。dotty-pi 在下一次语音操作前重新加载模型配置并重启其内部 pi 子进程，xiaozhi 则在下一次 OTA 请求时读取新的公开地址，两个容器都不需要重启。
+
 `DOTTY_ADMIN_TOKEN` 同时保护 xiaozhi 的 `/xiaozhi/admin/*` 和 bridge 的 `/admin/*` 机器接口，并为 dashboard 派生稳定的 CSRF 签名密钥。dashboard 浏览器操作使用 `/ui/actions/*` 和 CSRF 校验；需要分离 CSRF 密钥时再设置 `DOTTY_CSRF_SECRET`。
 
 ## ASR 配置

@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { effectiveRuntimeEnv } from "./runtime-config.mjs";
+
+const runtimeEnv = effectiveRuntimeEnv();
 
 function env(name, fallback = "") {
-  const value = process.env[name];
+  const value = runtimeEnv[name];
   return value === undefined || value === "" ? fallback : value;
 }
 

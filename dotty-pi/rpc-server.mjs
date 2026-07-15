@@ -1,10 +1,16 @@
 #!/usr/bin/env node
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
+
+import {
+  effectiveRuntimeEnv,
+  runtimeConfigFingerprint,
+} from "./runtime-config.mjs";
 
 const PORT = Number(process.env.DOTTY_PI_RPC_PORT ?? "8091");
 const TURN_TIMEOUT_MS = Number(process.env.DOTTY_PI_TURN_TIMEOUT_MS ?? "120000");
@@ -29,7 +35,7 @@ function simpleThinkingLevel(env) {
   }
   return level;
 }
-export function buildPiArgs(env = process.env) {
+export function buildPiArgs(env = effectiveRuntimeEnv()) {
   const promptPath = env.DOTTY_PI_SYSTEM_PROMPT_FILE
     ?? "/opt/dotty-pi/personas/dotty_voice.md";
   const systemPrompt = readFileSync(promptPath, "utf8").trim();
@@ -63,12 +69,38 @@ export class PiRpc {
     this.queue = [];
     this.waiters = [];
     this.stderr = [];
+    this.configFingerprint = null;
   }
 
   start() {
-    if (this.proc && this.proc.exitCode === null) return;
-    const args = buildPiArgs();
-    this.proc = spawn("pi", args, { stdio: ["pipe", "pipe", "pipe"] });
+    const env = effectiveRuntimeEnv();
+    const fingerprint = runtimeConfigFingerprint();
+    if (
+      this.proc
+      && this.proc.exitCode === null
+      && this.configFingerprint === fingerprint
+    ) return;
+    if (this.proc && this.proc.exitCode === null) this.proc.kill("SIGTERM");
+
+    const renderPath = new URL("./render-models-json.mjs", import.meta.url).pathname;
+    const rendered = spawnSync(process.execPath, [renderPath], {
+      env,
+      encoding: "utf8",
+    });
+    if (rendered.status !== 0) {
+      throw new Error(
+        `failed to render models.json: ${(rendered.stderr || rendered.stdout || "unknown error").trim()}`,
+      );
+    }
+
+    const args = buildPiArgs(env);
+    this.queue = [];
+    this.stderr = [];
+    this.proc = spawn("pi", args, {
+      stdio: ["pipe", "pipe", "pipe"],
+      env,
+    });
+    this.configFingerprint = fingerprint;
     createInterface({ input: this.proc.stdout }).on("line", (line) => {
       if (!line.trim()) return;
       try {
@@ -84,7 +116,7 @@ export class PiRpc {
   }
 
   async health() {
-    this.start();
+    if (!this.proc || this.proc.exitCode !== null) this.start();
     await new Promise((resolve) => setTimeout(resolve, 150));
     if (!this.proc || this.proc.exitCode !== null) {
       const detail = this.stderr.slice(-3).join(" | ") || "no stderr";

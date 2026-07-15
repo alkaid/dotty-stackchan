@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -37,6 +37,46 @@ test("models renderer emits the configured split routes using pi's schema", () =
     ]);
     assert.deepEqual(provider.models[1].thinkingLevelMap, { high: "high" });
     assert.equal("reasoningEffort" in provider.models[1], false);
+  } finally {
+    rmSync(piHome, { recursive: true, force: true });
+  }
+});
+
+test("models renderer prefers persisted runtime model settings", () => {
+  const piHome = mkdtempSync(join(tmpdir(), "dotty-models-runtime-test-"));
+  const runtimePath = join(piHome, "runtime-config.json");
+  writeFileSync(runtimePath, JSON.stringify({
+    DOTTY_PI_MODEL: "runtime-simple",
+    VOICE_THINKER_MODEL: "runtime-think",
+    DOTTY_PI_SIMPLE_REASONING: "true",
+    DOTTY_PI_SIMPLE_REASONING_EFFORT: "low",
+    DOTTY_PI_THINK_REASONING_EFFORT: "xhigh",
+  }));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [new URL("../render-models-json.mjs", import.meta.url).pathname],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PI_HOME: piHome,
+          DOTTY_RUNTIME_CONFIG_FILE: runtimePath,
+          DOTTY_PI_MODEL: "env-simple",
+          VOICE_THINKER_MODEL: "env-think",
+        },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const config = JSON.parse(
+      readFileSync(join(piHome, "agent/models.json"), "utf8"),
+    );
+    const models = Object.values(config.providers)[0].models;
+    assert.deepEqual(models.map((model) => model.id), [
+      "runtime-simple", "runtime-think",
+    ]);
+    assert.deepEqual(models[0].thinkingLevelMap, { low: "low" });
+    assert.deepEqual(models[1].thinkingLevelMap, { xhigh: "xhigh" });
   } finally {
     rmSync(piHome, { recursive: true, force: true });
   }

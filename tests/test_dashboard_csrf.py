@@ -16,6 +16,7 @@ import hashlib
 import os
 import sys
 import tempfile
+import json
 import unittest
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -90,7 +91,6 @@ class CSRFCookieIssuanceTests(unittest.TestCase):
         # What MUST hold: /health remains accessible without a token.
         r = self.client.get("/health")
         self.assertEqual(r.status_code, 200)
-
 
 class CSRFEnforcementTests(unittest.TestCase):
     """POST to /ui/actions/* must require a matching X-CSRF-Token."""
@@ -194,6 +194,70 @@ class CSRFKillSwitchTests(unittest.TestCase):
             self.assertNotEqual(r.status_code, 403)
         finally:
             csrf_mod._ENFORCE = original
+
+
+class DashboardConfigurationTests(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(bridge_app.app)
+        self.tmp = tempfile.TemporaryDirectory(prefix="dotty-runtime-config-")
+        self.path = Path(self.tmp.name) / "runtime-config.json"
+        self.env_patch = patch.dict(
+            os.environ, {"DOTTY_RUNTIME_CONFIG_FILE": str(self.path)},
+        )
+        self.env_patch.start()
+
+    def tearDown(self):
+        self.env_patch.stop()
+        self.tmp.cleanup()
+
+    def _token(self) -> str:
+        response = self.client.get("/ui/")
+        self.assertEqual(response.status_code, 200)
+        token = csrf_mod._unsign(self.client.cookies[csrf_mod.COOKIE_NAME])
+        assert token is not None
+        return token
+
+    def _valid_form(self) -> dict[str, str]:
+        return {
+            "DOTTY_PI_MODEL": "simple-v2",
+            "DOTTY_PI_SIMPLE_REASONING": "true",
+            "DOTTY_PI_SIMPLE_REASONING_EFFORT": "medium",
+            "VOICE_THINKER_MODEL": "think-v2",
+            "DOTTY_PI_THINK_REASONING_EFFORT": "high",
+            "XIAOZHI_PUBLIC_WS_BASE_URL": "wss://voice.example.test:8443",
+            "XIAOZHI_PUBLIC_OTA_BASE_URL": "https://ota.example.test",
+        }
+
+    def test_dashboard_has_configuration_control(self):
+        body = self.client.get("/ui/").text
+        self.assertIn('hx-get="/ui/configuration"', body)
+
+    def test_configuration_form_lists_all_runtime_fields(self):
+        body = self.client.get("/ui/configuration").text
+        for key in self._valid_form():
+            self.assertIn(f'name="{key}"', body)
+
+    def test_save_persists_allowlisted_runtime_config(self):
+        response = self.client.post(
+            "/ui/actions/configuration",
+            data=self._valid_form(),
+            headers={"X-CSRF-Token": self._token()},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Saved", response.text)
+        self.assertEqual(json.loads(self.path.read_text()), self._valid_form())
+
+    def test_invalid_public_url_is_not_persisted(self):
+        values = self._valid_form()
+        values["XIAOZHI_PUBLIC_WS_BASE_URL"] = "http://wrong-scheme.test/path"
+        response = self.client.post(
+            "/ui/actions/configuration",
+            data=values,
+            headers={"X-CSRF-Token": self._token()},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("WebSocket base URL must be an origin", response.text)
+        self.assertFalse(self.path.exists())
 
 
 class CSRFSigningUnitTests(unittest.TestCase):

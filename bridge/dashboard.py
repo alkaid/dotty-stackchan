@@ -28,6 +28,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingRes
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 
+from bridge.runtime_config import CONFIG_KEYS, effective_config, write_overrides
+
 log = logging.getLogger("dashboard")
 
 # Bridge wires its in-process message handler in via configure(). Lets the
@@ -221,6 +223,9 @@ def _fetch_robot_photo(device_id: str) -> Response:
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+_CONFIG_DEFAULTS = {key: os.environ.get(key, "") for key in CONFIG_KEYS}
+_REASONING_EFFORTS = ("", "minimal", "low", "medium", "high", "xhigh")
 
 
 _BRIDGE_VERSION_FILE = Path(__file__).parent.parent / ".bridge-version"
@@ -420,6 +425,118 @@ async def dashboard(request: Request) -> Any:
             **_static_chip_context(),
         },
     )
+
+
+def _configuration_values() -> dict[str, str]:
+    values = effective_config(_CONFIG_DEFAULTS)
+    values["DOTTY_PI_SIMPLE_REASONING"] = (
+        "true"
+        if values["DOTTY_PI_SIMPLE_REASONING"].strip().lower()
+        in ("1", "true", "yes", "on")
+        else "false"
+    )
+    return values
+
+
+def _validate_public_base_url(name: str, value: str, schemes: tuple[str, ...]) -> str:
+    cleaned = value.strip().rstrip("/")
+    parsed = urlparse(cleaned)
+    if (
+        parsed.scheme not in schemes
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in ("", "/")
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+    ):
+        allowed = " or ".join(f"{scheme}://" for scheme in schemes)
+        raise ValueError(f"{name} must be an origin starting with {allowed}")
+    try:
+        parsed.port
+    except ValueError as exc:
+        raise ValueError(f"{name} has an invalid port") from exc
+    return cleaned
+
+
+def _validate_configuration(values: dict[str, str]) -> dict[str, str]:
+    for key in ("DOTTY_PI_MODEL", "VOICE_THINKER_MODEL"):
+        value = values[key].strip()
+        if not value or len(value) > 200 or any(ord(char) < 32 for char in value):
+            raise ValueError(f"{key} must be a non-empty model ID")
+        values[key] = value
+    for key in (
+        "DOTTY_PI_SIMPLE_REASONING_EFFORT",
+        "DOTTY_PI_THINK_REASONING_EFFORT",
+    ):
+        value = values[key].strip().lower()
+        if value not in _REASONING_EFFORTS:
+            raise ValueError(f"{key} has an unsupported effort")
+        values[key] = value
+    values["XIAOZHI_PUBLIC_WS_BASE_URL"] = _validate_public_base_url(
+        "WebSocket base URL", values["XIAOZHI_PUBLIC_WS_BASE_URL"], ("ws", "wss"),
+    )
+    values["XIAOZHI_PUBLIC_OTA_BASE_URL"] = _validate_public_base_url(
+        "OTA base URL", values["XIAOZHI_PUBLIC_OTA_BASE_URL"], ("http", "https"),
+    )
+    return values
+
+
+def _configuration_response(
+    request: Request, values: dict[str, str], *, saved: bool = False,
+    error: str | None = None,
+) -> Any:
+    return templates.TemplateResponse(
+        request,
+        "configuration.html",
+        {
+            "values": values,
+            "efforts": _REASONING_EFFORTS,
+            "saved": saved,
+            "error": error,
+        },
+    )
+
+
+@router.get("/configuration", response_class=HTMLResponse, include_in_schema=False)
+async def configuration(request: Request) -> Any:
+    return _configuration_response(request, _configuration_values())
+
+
+@router.post(
+    "/actions/configuration", response_class=HTMLResponse, include_in_schema=False,
+)
+async def configuration_set(
+    request: Request,
+    DOTTY_PI_MODEL: str = Form(...),
+    DOTTY_PI_SIMPLE_REASONING: str = Form(""),
+    DOTTY_PI_SIMPLE_REASONING_EFFORT: str = Form(""),
+    VOICE_THINKER_MODEL: str = Form(...),
+    DOTTY_PI_THINK_REASONING_EFFORT: str = Form(""),
+    XIAOZHI_PUBLIC_WS_BASE_URL: str = Form(...),
+    XIAOZHI_PUBLIC_OTA_BASE_URL: str = Form(...),
+) -> Any:
+    values = {
+        "DOTTY_PI_MODEL": DOTTY_PI_MODEL,
+        "DOTTY_PI_SIMPLE_REASONING": (
+            "true"
+            if DOTTY_PI_SIMPLE_REASONING.strip().lower() in ("1", "true", "yes", "on")
+            else "false"
+        ),
+        "DOTTY_PI_SIMPLE_REASONING_EFFORT": DOTTY_PI_SIMPLE_REASONING_EFFORT,
+        "VOICE_THINKER_MODEL": VOICE_THINKER_MODEL,
+        "DOTTY_PI_THINK_REASONING_EFFORT": DOTTY_PI_THINK_REASONING_EFFORT,
+        "XIAOZHI_PUBLIC_WS_BASE_URL": XIAOZHI_PUBLIC_WS_BASE_URL,
+        "XIAOZHI_PUBLIC_OTA_BASE_URL": XIAOZHI_PUBLIC_OTA_BASE_URL,
+    }
+    try:
+        values = _validate_configuration(values)
+        write_overrides(values)
+    except (OSError, ValueError) as exc:
+        log.warning("runtime configuration save failed: %s", exc)
+        return _configuration_response(request, values, error=str(exc))
+    return _configuration_response(request, values, saved=True)
 
 
 _ALLOWED_EMOJIS = ("😊", "😆", "😢", "😮", "🤔", "😠", "😐", "😍", "😴")

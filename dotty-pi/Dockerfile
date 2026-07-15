@@ -33,6 +33,7 @@ COPY dotty-pi-ext/src ./src
 
 COPY personas /opt/dotty-pi/personas
 COPY dotty-pi/render-models-json.mjs /usr/local/bin/render-models-json.mjs
+COPY dotty-pi/runtime-config.mjs /usr/local/bin/runtime-config.mjs
 COPY dotty-pi/rpc-server.mjs /usr/local/bin/dotty-pi-rpc-server.mjs
 COPY dotty-pi/entrypoint.sh /usr/local/bin/dotty-pi-entrypoint
 RUN chmod +x /usr/local/bin/render-models-json.mjs /usr/local/bin/dotty-pi-rpc-server.mjs /usr/local/bin/dotty-pi-entrypoint \

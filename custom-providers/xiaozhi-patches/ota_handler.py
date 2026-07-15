@@ -7,6 +7,7 @@ import os
 import re
 import glob
 from typing import Dict, List, Tuple
+from urllib.parse import urlparse
 from aiohttp import web
 
 from core.auth import AuthManager
@@ -14,6 +15,39 @@ from core.utils.util import get_local_ip
 from core.api.base_handler import BaseHandler
 
 TAG = __name__
+
+_RUNTIME_CONFIG_FILE = os.environ.get(
+    "DOTTY_RUNTIME_CONFIG_FILE",
+    "/var/lib/dotty-bridge/state/runtime-config.json",
+)
+
+
+def _runtime_public_base(key: str, schemes: tuple[str, ...]) -> str:
+    try:
+        with open(_RUNTIME_CONFIG_FILE, encoding="utf-8") as handle:
+            config = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return ""
+    value = config.get(key, "") if isinstance(config, dict) else ""
+    if not isinstance(value, str):
+        return ""
+    value = value.strip().rstrip("/")
+    parsed = urlparse(value)
+    if (
+        parsed.scheme not in schemes
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in ("", "/")
+        or parsed.query
+        or parsed.fragment
+    ):
+        return ""
+    try:
+        parsed.port
+    except ValueError:
+        return ""
+    return value
 
 
 def _safe_basename(filename: str) -> str:
@@ -53,6 +87,11 @@ def _is_higher_version(a: str, b: str) -> bool:
 
 
 def _get_ota_base_url(server_config: dict, local_ip: str) -> str:
+    runtime_value = _runtime_public_base(
+        "XIAOZHI_PUBLIC_OTA_BASE_URL", ("http", "https"),
+    )
+    if runtime_value:
+        return runtime_value
     configured = str(server_config.get("ota_base_url", "")).strip().rstrip("/")
     if configured:
         return configured
@@ -148,6 +187,11 @@ class OTAHandler(BaseHandler):
         Returns:
             str: websocket地址
         """
+        runtime_value = _runtime_public_base(
+            "XIAOZHI_PUBLIC_WS_BASE_URL", ("ws", "wss"),
+        )
+        if runtime_value:
+            return f"{runtime_value}/xiaozhi/v1/"
         server_config = self.config["server"]
         websocket_config = server_config.get("websocket", "")
 

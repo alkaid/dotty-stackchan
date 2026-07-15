@@ -7,6 +7,7 @@ The module's core.* / aiohttp imports are stubbed so the test runs without a
 container; only the pure module-level functions are exercised.
 """
 import pathlib
+import json
 import sys
 import types
 import unittest
@@ -99,6 +100,12 @@ class TestOtaVersion(unittest.TestCase):
 
 
 class TestOtaBaseUrl(unittest.TestCase):
+    def setUp(self):
+        self._old_runtime_path = _mod._RUNTIME_CONFIG_FILE
+
+    def tearDown(self):
+        _mod._RUNTIME_CONFIG_FILE = self._old_runtime_path
+
     def test_configured_public_base_wins_over_internal_listener(self):
         config = {
             "http_port": 8003,
@@ -114,6 +121,55 @@ class TestOtaBaseUrl(unittest.TestCase):
             _get_ota_base_url({"http_port": 8003}, "172.19.0.4"),
             "http://172.19.0.4:8003",
         )
+
+    def test_runtime_config_overrides_ota_base(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "runtime-config.json"
+            path.write_text(json.dumps({
+                "XIAOZHI_PUBLIC_OTA_BASE_URL": "https://ota.example.test:8443",
+            }), encoding="utf-8")
+            _mod._RUNTIME_CONFIG_FILE = str(path)
+            self.assertEqual(
+                _get_ota_base_url(
+                    {"ota_base_url": "http://from-startup:8003"}, "172.19.0.4",
+                ),
+                "https://ota.example.test:8443",
+            )
+
+    def test_invalid_runtime_url_is_ignored(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "runtime-config.json"
+            path.write_text(json.dumps({
+                "XIAOZHI_PUBLIC_OTA_BASE_URL": "file:///etc/passwd",
+            }), encoding="utf-8")
+            _mod._RUNTIME_CONFIG_FILE = str(path)
+            self.assertEqual(
+                _get_ota_base_url(
+                    {"ota_base_url": "http://from-startup:8003"}, "172.19.0.4",
+                ),
+                "http://from-startup:8003",
+            )
+
+    def test_runtime_config_overrides_websocket_base(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "runtime-config.json"
+            path.write_text(json.dumps({
+                "XIAOZHI_PUBLIC_WS_BASE_URL": "wss://voice.example.test",
+            }), encoding="utf-8")
+            _mod._RUNTIME_CONFIG_FILE = str(path)
+            handler = types.SimpleNamespace(config={
+                "server": {"websocket": "ws://from-startup/xiaozhi/v1/"},
+            })
+            self.assertEqual(
+                _mod.OTAHandler._get_websocket_url(handler, "172.19.0.4", 8000),
+                "wss://voice.example.test/xiaozhi/v1/",
+            )
 
 
 if __name__ == "__main__":

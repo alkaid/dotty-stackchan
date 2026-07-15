@@ -17,7 +17,7 @@
         integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"
         crossorigin="anonymous" defer></script>
 <link href="/ui/static/tailwind.min.css" rel="stylesheet"
-      integrity="sha384-EN+qoJQQ/S6PWqDSsLL/Q0nVNcadxFqQdluflTVYakNeAJTf3LdiB9arueL3wYdR"
+      integrity="sha384-tKTeB21d7swO0ngevEBRVcozExHVdAtZqy+yhRp0RmtGeRtQxmJkyzhLxMiRIhjR"
       crossorigin="anonymous">
 <style>
   html, body { -webkit-tap-highlight-color: transparent; }
@@ -92,6 +92,15 @@
           class="ml-2 inline-flex items-center"></span>
   </div>
   <div class="flex-none flex items-center gap-2">
+    <button type="button"
+            class="btn btn-ghost btn-sm btn-circle text-base-content/70 hover:text-base-content"
+            aria-label="Open configuration" title="Configuration"
+            hx-get="/ui/configuration"
+            hx-target="#configuration-modal-body"
+            hx-swap="innerHTML"
+            onclick="document.getElementById('configuration-modal').showModal()">
+      <span class="text-lg leading-none" aria-hidden="true">&#9881;</span>
+    </button>
     <span id="version-chip-wrap"
           hx-get="/ui/version-chip"
           hx-trigger="load, every 600s"
@@ -325,6 +334,15 @@
       <form method="dialog">
         <button class="btn btn-sm">Close</button>
       </form>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<dialog id="configuration-modal" class="modal">
+  <div class="modal-box max-w-2xl">
+    <div id="configuration-modal-body">
+      <div class="text-sm text-base-content/50">Loading...</div>
     </div>
   </div>
   <form method="dialog" class="modal-backdrop"><button>close</button></form>

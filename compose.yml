@@ -34,6 +34,7 @@ services:
       DOTTY_ADMIN_TOKEN: ${DOTTY_ADMIN_TOKEN:-}
       DOTTY_KID_MODE_STATE: /var/lib/dotty-bridge/state/kid-mode
       DOTTY_SMART_MODE_STATE: /var/lib/dotty-bridge/state/smart-mode
+      DOTTY_RUNTIME_CONFIG_FILE: /var/lib/dotty-bridge/state/runtime-config.json
       MIN_UTTERANCE_CHARS: ${MIN_UTTERANCE_CHARS:-2}
     ports:
       - "${XIAOZHI_WS_PORT:-8000}:8000"
@@ -49,7 +50,7 @@ services:
       - ./models/chattts:/opt/xiaozhi-esp32-server/models/chattts:ro
       - ./models/whisper-small.en-ct2:/opt/xiaozhi-esp32-server/models/whisper-small.en-ct2:ro
       - ./tmp:/opt/xiaozhi-esp32-server/tmp
-      - ${DOTTY_BRIDGE_STATE_DIR:-/mnt/user/appdata/dotty-bridge/state}:/var/lib/dotty-bridge/state:ro
+      - ${DOTTY_BRIDGE_STATE_DIR:-/mnt/user/appdata/dotty-bridge}/state:/var/lib/dotty-bridge/state:ro
     depends_on:
       dotty-pi:
         condition: service_healthy
@@ -92,6 +93,7 @@ services:
       DOTTY_PI_THINK_REASONING_EFFORT: ${DOTTY_PI_THINK_REASONING_EFFORT:-high}
       DOTTY_PI_THINK_CONTEXT_WINDOW: ${DOTTY_PI_THINK_CONTEXT_WINDOW:-128000}
       DOTTY_PI_THINK_MAX_TOKENS: ${DOTTY_PI_THINK_MAX_TOKENS:-4096}
+      DOTTY_RUNTIME_CONFIG_FILE: /var/lib/dotty-bridge/state/runtime-config.json
       VOICE_THINKER_URL: ${VOICE_THINKER_URL-}
       VOICE_THINKER_MODEL: ${VOICE_THINKER_MODEL:-dotty-think}
       VOICE_THINKER_API_KEY: ${VOICE_THINKER_API_KEY-}
@@ -104,6 +106,7 @@ services:
       - ${DOTTY_PI_STATE_DIR:-/mnt/user/appdata/dotty-pi}/agent:/root/.pi/agent
       - ${DOTTY_PI_STATE_DIR:-/mnt/user/appdata/dotty-pi}/memory:/root/.pi/memory
       - ${DOTTY_PI_STATE_DIR:-/mnt/user/appdata/dotty-pi}/sessions:/root/.pi/sessions
+      - ${DOTTY_BRIDGE_STATE_DIR:-/mnt/user/appdata/dotty-bridge}/state:/var/lib/dotty-bridge/state:ro
 
   dotty-behaviour:
     build:
@@ -205,6 +208,14 @@ services:
       DOTTY_DASHBOARD_PASS: ${DOTTY_DASHBOARD_PASS-}
       DOTTY_DEFAULT_MODEL: ${DOTTY_PI_MODEL:-dotty-simple}
       SMART_MODEL: ${VOICE_THINKER_MODEL:-dotty-think}
+      DOTTY_RUNTIME_CONFIG_FILE: /var/lib/dotty-bridge/state/runtime-config.json
+      DOTTY_PI_MODEL: ${DOTTY_PI_MODEL:-dotty-simple}
+      DOTTY_PI_SIMPLE_REASONING: ${DOTTY_PI_SIMPLE_REASONING:-false}
+      DOTTY_PI_SIMPLE_REASONING_EFFORT: ${DOTTY_PI_SIMPLE_REASONING_EFFORT-}
+      VOICE_THINKER_MODEL: ${VOICE_THINKER_MODEL:-dotty-think}
+      DOTTY_PI_THINK_REASONING_EFFORT: ${DOTTY_PI_THINK_REASONING_EFFORT:-high}
+      XIAOZHI_PUBLIC_WS_BASE_URL: ${XIAOZHI_PUBLIC_WS_BASE_URL-}
+      XIAOZHI_PUBLIC_OTA_BASE_URL: ${XIAOZHI_PUBLIC_OTA_BASE_URL-}
     ports:
       - "${DOTTY_BRIDGE_PORT:-8081}:8081"
     volumes:

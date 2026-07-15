@@ -1,0 +1,91 @@
+<div id="configuration-panel">
+  <div class="flex items-center justify-between gap-3 mb-4">
+    <h3 class="text-lg font-semibold">Configuration</h3>
+    <form method="dialog">
+      <button class="btn btn-sm btn-circle btn-ghost" aria-label="Close configuration" title="Close">&times;</button>
+    </form>
+  </div>
+
+  {% if error %}
+  <div class="alert alert-error dotty-alert mb-3" role="alert"><span>{{ error }}</span></div>
+  {% endif %}
+  {% if saved %}
+  <div class="alert alert-success dotty-alert mb-3" role="status">
+    <span>Saved. New voice turns and OTA requests will use these values.</span>
+  </div>
+  {% endif %}
+
+  <form hx-post="/ui/actions/configuration"
+        hx-target="#configuration-panel"
+        hx-swap="outerHTML"
+        hx-disabled-elt="find button, find input, find select"
+        class="flex flex-col gap-5">
+    <fieldset class="flex flex-col gap-3">
+      <legend class="text-sm font-semibold mb-2">Voice models</legend>
+
+      <label class="form-control w-full">
+        <span class="label-text mb-1">Normal model</span>
+        <input class="input input-bordered w-full font-mono" type="text"
+               name="DOTTY_PI_MODEL" value="{{ values.DOTTY_PI_MODEL }}"
+               maxlength="200" required autocomplete="off">
+      </label>
+
+      <label class="form-control w-full">
+        <span class="label-text mb-1">Think model</span>
+        <input class="input input-bordered w-full font-mono" type="text"
+               name="VOICE_THINKER_MODEL" value="{{ values.VOICE_THINKER_MODEL }}"
+               maxlength="200" required autocomplete="off">
+      </label>
+
+      <label class="label cursor-pointer justify-start gap-3 px-0">
+        <input type="checkbox" name="DOTTY_PI_SIMPLE_REASONING" value="true"
+               class="toggle toggle-primary"
+               {% if values.DOTTY_PI_SIMPLE_REASONING == "true" %}checked{% endif %}>
+        <span class="label-text">Reasoning on normal turns</span>
+      </label>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <label class="form-control w-full">
+          <span class="label-text mb-1">Normal reasoning effort</span>
+          <select class="select select-bordered w-full" name="DOTTY_PI_SIMPLE_REASONING_EFFORT">
+            {% for effort in efforts %}
+            <option value="{{ effort }}" {% if values.DOTTY_PI_SIMPLE_REASONING_EFFORT == effort %}selected{% endif %}>
+              {{ effort or "Default (medium)" }}
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="form-control w-full">
+          <span class="label-text mb-1">Think reasoning effort</span>
+          <select class="select select-bordered w-full" name="DOTTY_PI_THINK_REASONING_EFFORT">
+            {% for effort in efforts %}
+            <option value="{{ effort }}" {% if values.DOTTY_PI_THINK_REASONING_EFFORT == effort %}selected{% endif %}>
+              {{ effort or "Default (high)" }}
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset class="flex flex-col gap-3 border-t border-base-300 pt-4">
+      <legend class="text-sm font-semibold mb-2 pr-2">Device endpoints</legend>
+      <label class="form-control w-full">
+        <span class="label-text mb-1">WebSocket base URL</span>
+        <input class="input input-bordered w-full font-mono" type="url"
+               name="XIAOZHI_PUBLIC_WS_BASE_URL" value="{{ values.XIAOZHI_PUBLIC_WS_BASE_URL }}"
+               placeholder="ws://192.168.1.10:8000" maxlength="500" required autocomplete="url">
+      </label>
+      <label class="form-control w-full">
+        <span class="label-text mb-1">OTA base URL</span>
+        <input class="input input-bordered w-full font-mono" type="url"
+               name="XIAOZHI_PUBLIC_OTA_BASE_URL" value="{{ values.XIAOZHI_PUBLIC_OTA_BASE_URL }}"
+               placeholder="http://192.168.1.10:8003" maxlength="500" required autocomplete="url">
+      </label>
+    </fieldset>
+
+    <div class="modal-action mt-0">
+      <button type="submit" class="btn btn-primary">Save</button>
+    </div>
+  </form>
+</div>
