@@ -26,7 +26,7 @@ RESET  := \033[0m
 DL_FILE = dl_file() { if curl -fL --retry 3 --retry-delay 1 --progress-bar -o "$$2" "$$1"; then _sz=$$(wc -c < "$$2" 2>/dev/null || echo 0); if [ "$$_sz" -lt 100 ]; then echo -e "  $(RED)$$2: only $$_sz bytes — treating as a failed download$(RESET)"; rm -f "$$2"; return 1; fi; else echo -e "  $(RED)Failed to download $$1$(RESET)"; rm -f "$$2"; return 1; fi; }
 
 # ── Targets ──────────────────────────────────────────────────────────
-.PHONY: help setup fetch-models doctor up down logs status voice-list voice-install sbom verify-firmware test test-node lint check _preflight-compose _preflight-rendered
+.PHONY: help setup xiaozhi-base fetch-models doctor up simulator simulator-only down logs status voice-list voice-install sbom verify-firmware test test-node lint check _preflight-compose _preflight-rendered
 
 # ─────────────────────────────────────────────────────────────────────
 # _preflight-compose — fail fast if Docker Compose v2 plugin is missing
@@ -74,6 +74,9 @@ help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BOLD)%-15s$(RESET) %s\n", $$1, $$2}'
 	@echo ""
+
+xiaozhi-base: _preflight-compose ## Build the low-churn Xiaozhi CUDA/PyTorch base image
+	docker compose --profile build-only build xiaozhi-base
 
 # ─────────────────────────────────────────────────────────────────────
 # Dev-loop targets — same test split and coverage gate as CI.
@@ -211,6 +214,11 @@ setup: _preflight-compose ## Validate .env, render config, fetch models, build a
 	   echo -e "  $(YELLOW)NVIDIA runtime not found.$(RESET)"; \
 	 fi; \
 	 ASR_ACCELERATION="$$(env_value ASR_ACCELERATION)"; \
+	 ASR_LANGUAGE="$$(env_value ASR_LANGUAGE)"; \
+	 [ -n "$$ASR_LANGUAGE" ] || ASR_LANGUAGE=auto; \
+	 case "$$ASR_LANGUAGE" in auto|zh|en|yue|ja|ko|nospeech) ;; *) \
+	   echo -e "$(RED)Error: ASR_LANGUAGE must be auto, zh, en, yue, ja, ko, or nospeech.$(RESET)"; exit 1 ;; \
+	 esac; \
 	 if [ -z "$$ASR_ACCELERATION" ]; then \
 	   if [ -n "$$(env_value ASR_MODULE)$$(env_value ASR_DEVICE)$$(env_value ASR_COMPUTE_TYPE)$$(env_value XIAOZHI_CONTAINER_RUNTIME)$$(env_value NVIDIA_VISIBLE_DEVICES)" ]; then \
 	     ASR_ACCELERATION=manual; \
@@ -232,15 +240,18 @@ setup: _preflight-compose ## Validate .env, render config, fetch models, build a
 	     echo -e "$(RED)Error: ASR_ACCELERATION must be auto, cpu, cuda, or manual.$(RESET)"; exit 1 ;; \
 	 esac; \
 	 if [ "$$RESOLVED_ACCELERATION" = "cuda" ]; then \
-	   ASR_MODULE=WhisperLocal; ASR_DEVICE=cuda; ASR_COMPUTE_TYPE=float16; \
+	   ASR_MODULE=FunASR; ASR_DEVICE=cuda; ASR_COMPUTE_TYPE=float32; \
 	   CONTAINER_RUNTIME=nvidia; NVIDIA_VISIBLE_DEVICES_VALUE=all; \
 	 elif [ "$$RESOLVED_ACCELERATION" = "cpu" ]; then \
-	   ASR_MODULE=FunASR; ASR_DEVICE=cpu; ASR_COMPUTE_TYPE=int8; \
+	   ASR_MODULE=FunASR; ASR_DEVICE=cpu; ASR_COMPUTE_TYPE=float32; \
 	   CONTAINER_RUNTIME=runc; NVIDIA_VISIBLE_DEVICES_VALUE=void; \
 	 else \
 	   ASR_MODULE="$$(env_value ASR_MODULE)"; [ -n "$$ASR_MODULE" ] || ASR_MODULE=FunASR; \
 	   ASR_DEVICE="$$(env_value ASR_DEVICE)"; [ -n "$$ASR_DEVICE" ] || ASR_DEVICE=cpu; \
-	   ASR_COMPUTE_TYPE="$$(env_value ASR_COMPUTE_TYPE)"; [ -n "$$ASR_COMPUTE_TYPE" ] || ASR_COMPUTE_TYPE=int8; \
+	   ASR_COMPUTE_TYPE="$$(env_value ASR_COMPUTE_TYPE)"; \
+	   if [ -z "$$ASR_COMPUTE_TYPE" ]; then \
+	     if [ "$$ASR_MODULE" = "FunASR" ]; then ASR_COMPUTE_TYPE=float32; else ASR_COMPUTE_TYPE=int8; fi; \
+	   fi; \
 	   CONTAINER_RUNTIME="$$(env_value XIAOZHI_CONTAINER_RUNTIME)"; [ -n "$$CONTAINER_RUNTIME" ] || CONTAINER_RUNTIME=runc; \
 	   NVIDIA_VISIBLE_DEVICES_VALUE="$$(env_value NVIDIA_VISIBLE_DEVICES)"; \
 	   [ -n "$$NVIDIA_VISIBLE_DEVICES_VALUE" ] || NVIDIA_VISIBLE_DEVICES_VALUE=void; \
@@ -249,7 +260,7 @@ setup: _preflight-compose ## Validate .env, render config, fetch models, build a
 	   echo -e "$(RED)Error: XIAOZHI_CONTAINER_RUNTIME must be runc or nvidia.$(RESET)"; exit 1 ;; \
 	 esac; \
 	 NEED_CUDA=0; \
-	 if [ "$$ASR_DEVICE" = "cuda" ]; then NEED_CUDA=1; fi; \
+	 case "$$ASR_DEVICE" in cuda|cuda:*) NEED_CUDA=1 ;; esac; \
 	 if [ "$$NEED_CUDA" = "1" ] && [ "$$CONTAINER_RUNTIME" != "nvidia" ]; then \
 	   echo -e "$(RED)Error: CUDA ASR requires XIAOZHI_CONTAINER_RUNTIME=nvidia.$(RESET)"; \
 	   exit 1; \
@@ -258,6 +269,7 @@ setup: _preflight-compose ## Validate .env, render config, fetch models, build a
 	   echo -e "$(RED)Error: Docker does not provide the NVIDIA runtime.$(RESET)"; exit 1; \
 	 fi; \
 	 set_env_value ASR_ACCELERATION "$$ASR_ACCELERATION"; \
+	 set_env_value ASR_LANGUAGE "$$ASR_LANGUAGE"; \
 	 if [ "$$ASR_ACCELERATION" != "manual" ]; then \
 	   set_env_value ASR_MODULE "$$ASR_MODULE"; \
 	   set_env_value ASR_DEVICE "$$ASR_DEVICE"; \
@@ -286,6 +298,7 @@ setup: _preflight-compose ## Validate .env, render config, fetch models, build a
 	       -e "s|<YOUR_NAME>|$$e_YOUR_NAME|g" \
 	       -e "s|<TZ_VALUE>|$$e_TZ_VALUE|g" \
 	       -e "s|<ASR_MODULE>|$$ASR_MODULE|g" \
+	       -e "s|<ASR_LANGUAGE>|$$ASR_LANGUAGE|g" \
 	       -e "s|<ASR_DEVICE>|$$ASR_DEVICE|g" \
 	       -e "s|<ASR_COMPUTE_TYPE>|$$ASR_COMPUTE_TYPE|g" \
 	       .config.yaml.template > data/.config.yaml.tmp; \
@@ -298,18 +311,36 @@ setup: _preflight-compose ## Validate .env, render config, fetch models, build a
 	 make --no-print-directory fetch-models; \
 	 echo ""; \
 	 BRIDGE_VERSION_VALUE="$${BRIDGE_VERSION:-$$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"; \
-	 echo -e "$(BOLD)Building container images...$(RESET)"; \
+	 echo -e "$(BOLD)Ensuring Xiaozhi base image...$(RESET)"; \
+	 XIAOZHI_BASE_IMAGE_VALUE="$$(env_value XIAOZHI_BASE_IMAGE)"; \
+	 if [ -n "$$XIAOZHI_BASE_IMAGE_VALUE" ]; then \
+	   if docker image inspect "$$XIAOZHI_BASE_IMAGE_VALUE" >/dev/null 2>&1; then \
+	     echo "  using local $$XIAOZHI_BASE_IMAGE_VALUE"; \
+	   else \
+	     echo "  pulling $$XIAOZHI_BASE_IMAGE_VALUE"; \
+	     docker pull "$$XIAOZHI_BASE_IMAGE_VALUE"; \
+	   fi; \
+	 else \
+	   docker compose --profile build-only build xiaozhi-base; \
+	 fi; \
+	 echo ""; \
+	 echo -e "$(BOLD)Building application images...$(RESET)"; \
 	 BRIDGE_VERSION="$$BRIDGE_VERSION_VALUE" docker compose build; \
 	 if [ "$$NEED_CUDA" = "1" ]; then \
 	   echo ""; \
 	   echo -e "$(BOLD)Validating xiaozhi CUDA passthrough...$(RESET)"; \
+	   if [ "$$ASR_MODULE" = "FunASR" ]; then \
+	     GPU_PROBE='import torch; available = torch.cuda.is_available(); count = torch.cuda.device_count() if available else 0; probe = torch.ones(1, device="cuda").mul_(2) if available and count else None; torch.cuda.synchronize() if probe is not None else None; value = probe.cpu().item() if probe is not None else None; print(f"FunASR torch CUDA available={available}, devices={count}, kernel={value}"); raise SystemExit(0 if value == 2 else 1)'; \
+	   else \
+	     GPU_PROBE='import os, ctranslate2; required = os.environ["DOTTY_CUDA_COMPUTE_TYPE"]; count = ctranslate2.get_cuda_device_count(); types = ctranslate2.get_supported_compute_types("cuda", 0) if count else set(); print(f"Whisper CUDA devices={count}, compute_types={sorted(types)}, required={required}"); raise SystemExit(0 if count > 0 and required in types else 1)'; \
+	   fi; \
 	   if docker compose run --rm --no-deps --entrypoint python \
 	       -e DOTTY_CUDA_COMPUTE_TYPE="$$ASR_COMPUTE_TYPE" xiaozhi-esp32-server \
-	       -c 'import os, ctranslate2; required = os.environ["DOTTY_CUDA_COMPUTE_TYPE"]; count = ctranslate2.get_cuda_device_count(); types = ctranslate2.get_supported_compute_types("cuda", 0) if count else set(); print(f"CUDA devices={count}, compute_types={sorted(types)}, required={required}"); raise SystemExit(0 if count > 0 and required in types else 1)'; then \
-	     echo -e "  $(GREEN)CUDA passthrough and $$ASR_COMPUTE_TYPE support verified.$(RESET)"; \
+	       -c "$$GPU_PROBE"; then \
+	     echo -e "  $(GREEN)$$ASR_MODULE CUDA support verified.$(RESET)"; \
 	   elif [ "$$ASR_ACCELERATION" = "auto" ]; then \
 	     echo -e "  $(YELLOW)CUDA probe failed; falling back to FunASR on CPU.$(RESET)"; \
-	     ASR_MODULE=FunASR; ASR_DEVICE=cpu; ASR_COMPUTE_TYPE=int8; \
+	     ASR_MODULE=FunASR; ASR_DEVICE=cpu; ASR_COMPUTE_TYPE=float32; \
 	     CONTAINER_RUNTIME=runc; NVIDIA_VISIBLE_DEVICES_VALUE=void; NEED_CUDA=0; \
 	     set_env_value ASR_MODULE "$$ASR_MODULE"; \
 	     set_env_value ASR_DEVICE "$$ASR_DEVICE"; \
@@ -319,7 +350,7 @@ setup: _preflight-compose ## Validate .env, render config, fetch models, build a
 	     render_xiaozhi_config; \
 	     docker compose config --quiet; \
 	   else \
-	     echo -e "$(RED)Error: xiaozhi cannot access CUDA with $$ASR_COMPUTE_TYPE through Compose.$(RESET)"; \
+	     echo -e "$(RED)Error: xiaozhi cannot run $$ASR_MODULE on CUDA through Compose.$(RESET)"; \
 	     echo "Check the NVIDIA driver and Container Toolkit, or set ASR_ACCELERATION=cpu."; \
 	     exit 1; \
 	   fi; \
@@ -406,6 +437,12 @@ doctor: ## Run health checks on config, models, and services
 # ─────────────────────────────────────────────────────────────────────
 up: _preflight-compose _preflight-rendered ## Start containers (docker compose up -d)
 	docker compose up -d
+
+simulator: _preflight-compose _preflight-rendered ## Build and start the optional StackChan simulator
+	docker compose --profile simulator up -d --build stackchan-simulator
+
+simulator-only: _preflight-compose _preflight-rendered ## Rebuild only the simulator without touching dependencies
+	docker compose --profile simulator up -d --build --no-deps stackchan-simulator
 
 down: _preflight-compose _preflight-rendered ## Stop containers (docker compose down)
 	docker compose down

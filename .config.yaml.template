@@ -16,7 +16,7 @@ delete_audio: true
 
 selected_module:
   VAD: SileroVAD
-  ASR: <ASR_MODULE>       # WhisperLocal (CUDA) or FunASR (CPU fallback)
+  ASR: <ASR_MODULE>       # FunASR by default; WhisperLocal is manual-only
   LLM: PiVoiceLLM         # default: agent loop hosted in the dotty-pi container (requires the sibling dotty-pi service)
   # LLM: OpenAICompat      # <-- alternate: direct OpenAI-compatible LLM
   TTS: LocalPiper
@@ -62,10 +62,10 @@ ASR:
     type: fun_local
     model_dir: models/SenseVoiceSmall
     output_dir: tmp/
-    # SenseVoiceSmall on "auto" mis-detects Korean/Japanese on short or unclear
-    # English audio. Valid values: auto, zh, en, yue (Cantonese), ja, ko, nospeech.
-    # Requires the patched fun_local.py baked into the xiaozhi image.
-    language: en
+    # auto supports mixed Chinese/English. Pin with ASR_LANGUAGE when a
+    # deployment intentionally accepts only one language.
+    language: <ASR_LANGUAGE>
+    device: <ASR_DEVICE>
   WhisperLocal:
     type: whisper_local
     # On-disk CTranslate2 model dir (downloaded by `make fetch-models`).

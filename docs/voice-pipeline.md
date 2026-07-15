@@ -8,7 +8,7 @@ description: xiaozhi-esp32-server pipeline stages -- VAD, ASR, LLM proxy, and TT
 ## TL;DR
 
 - **Server** is `xinnan-tech/xiaozhi-esp32-server` running in Docker on a Linux host. Plugin-based: each of VAD, ASR, LLM, TTS, Memory, Intent is a swappable provider picked via `data/.config.yaml`'s `selected_module:` block.
-- Our live pipeline: **SileroVAD** (speech-end) → **FunASR SenseVoiceSmall** or **WhisperLocal** (ASR, pinned to English) → **PiVoiceLLM** custom provider (current default; HTTP RPC to the `dotty-pi` container) or **OpenAICompat** (alternate; points straight at any OpenAI-compatible endpoint) → **LocalPiper** en_GB-cori-medium (TTS; EdgeTTS / StreamingEdgeTTS as alternates).
+- Our live pipeline: **SileroVAD** (speech-end) → **FunASR SenseVoiceSmall** (`auto` language, CUDA when available) → **PiVoiceLLM** custom provider (current default; HTTP RPC to the `dotty-pi` container) or **OpenAICompat** (alternate; points straight at any OpenAI-compatible endpoint) → **LocalPiper** en_GB-cori-medium (TTS; EdgeTTS / StreamingEdgeTTS as alternates). WhisperLocal remains an explicit manual alternative.
 - The xiaozhi container also runs a perception relay (`EventTextMessageHandler`) that forwards firmware `face_detected` / `face_lost` / `sound_event` / `state_changed` frames to `dotty-behaviour`'s `/api/perception/event`.
 - **Emotion** is not a pipeline stage — it's extracted post-hoc from the LLM's emoji prefix and emitted as a separate WS frame. See [protocols.md](./protocols.md#emotion-protocol).
 - Custom providers are copied into the image by the root Dockerfile at `/opt/xiaozhi-esp32-server/core/providers/{asr,tts,llm}/…`.
@@ -59,7 +59,7 @@ Model: `FunAudioLLM/SenseVoiceSmall` on HuggingFace. From the model card:
 - **70 ms to process 10 s of audio — 15× faster than Whisper-Large, 5× faster than Whisper-Small.**
 - Non-autoregressive end-to-end architecture (fast, no decode loop).
 
-**Our patch.** Upstream `fun_local.py` hardcodes `language="auto"`, which mis-detects short or unclear English as Korean or Japanese. The repo-hosted `fun_local.py` adds a `language` config key (read from `ASR.FunASR.language` in `.config.yaml`) and passes it through to `model.generate`. We set `language: en`.
+**Our patch.** The repo-hosted `fun_local.py` reads both `language` and `device` from `ASR.FunASR` in `.config.yaml`. `ASR_LANGUAGE=auto` is the default for mixed Chinese/English input; deployments that intentionally accept one language can pin it. `device=cuda` is normalized to `cuda:0` and passed to FunASR's `AutoModel`.
 
 Deployment: mounted as a file-level override at `/opt/xiaozhi-esp32-server/core/providers/asr/fun_local.py`.
 

@@ -13,6 +13,7 @@ import pathlib
 import sys
 import unittest
 from unittest.mock import MagicMock
+import json
 
 for _n in (
     "config", "config.logger", "core", "core.api", "core.api.ota_handler",
@@ -80,6 +81,11 @@ class AdminAuthMiddlewareTests(unittest.TestCase):
         resp = _run(_Req("/xiaozhi/admin/inject-text"))
         self.assertEqual(resp.status, 401)
 
+    def test_capture_audio_is_admin_authenticated(self):
+        os.environ["DOTTY_ADMIN_TOKEN"] = "s3cret"
+        resp = _run(_Req("/xiaozhi/admin/capture-audio"))
+        self.assertEqual(resp.status, 401)
+
     def test_set_token_wrong_header_401(self):
         os.environ["DOTTY_ADMIN_TOKEN"] = "s3cret"
         resp = _run(_Req("/xiaozhi/admin/set-state", token_header="nope"))
@@ -109,6 +115,80 @@ class AdminAuthMiddlewareTests(unittest.TestCase):
     def test_set_token_does_not_gate_vision(self):
         os.environ["DOTTY_ADMIN_TOKEN"] = "s3cret"
         self.assertIs(_run(_Req("/mcp/vision/explain")), _SENTINEL)
+
+
+class _JsonRequest:
+    def __init__(self, body):
+        self.body = body
+
+    async def json(self):
+        if isinstance(self.body, Exception):
+            raise self.body
+        return self.body
+
+
+class _WebSocket:
+    def __init__(self):
+        self.sent = []
+
+    async def send(self, message):
+        self.sent.append(message)
+
+
+class CaptureAudioRouteTests(unittest.TestCase):
+
+    def setUp(self):
+        self.connections = _mod._dotty_active_connections
+        self.connections.clear()
+        self.ws = _WebSocket()
+        self.conn = MagicMock()
+        self.conn.session_id = "session-1"
+        self.conn.headers = {"device-id": "stackchan-sim-001"}
+        self.conn.websocket = self.ws
+        self.connections["stackchan-sim-001"] = self.conn
+        self.server = _mod.SimpleHttpServer({})
+
+    def tearDown(self):
+        self.connections.clear()
+
+    def call(self, body):
+        async def _call():
+            response = await self.server._dotty_capture_audio(_JsonRequest(body))
+            await asyncio.sleep(0)
+            return response
+        return asyncio.run(_call())
+
+    def test_sends_capture_clip_mcp(self):
+        response = self.call({"device_id": "stackchan-sim-001", "duration_ms": 2400})
+        self.assertEqual(response.status, 200)
+        self.assertEqual(len(self.ws.sent), 1)
+        frame = json.loads(self.ws.sent[0])
+        self.assertEqual(frame["session_id"], "session-1")
+        self.assertEqual(frame["payload"]["method"], "tools/call")
+        self.assertEqual(frame["payload"]["params"], {
+            "name": "self.audio.capture_clip",
+            "arguments": {"duration_ms": 2400},
+        })
+
+    def test_rejects_invalid_duration(self):
+        response = self.call({"duration_ms": 100})
+        self.assertEqual(response.status, 400)
+        self.assertEqual(self.ws.sent, [])
+
+    def test_rejects_non_object_body(self):
+        response = self.call([])
+        self.assertEqual(response.status, 400)
+        self.assertEqual(self.ws.sent, [])
+
+    def test_rejects_non_string_device_id(self):
+        response = self.call({"device_id": 123, "duration_ms": 4000})
+        self.assertEqual(response.status, 400)
+        self.assertEqual(self.ws.sent, [])
+
+    def test_requires_connected_device(self):
+        self.connections.clear()
+        response = self.call({"duration_ms": 4000})
+        self.assertEqual(response.status, 503)
 
 
 if __name__ == "__main__":

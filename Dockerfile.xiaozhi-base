@@ -1,0 +1,24 @@
+# Pinned 2026-05-17 from :server_0.9.3.
+FROM ghcr.io/xinnan-tech/xiaozhi-esp32-server@sha256:3accd82a7d1a6c01c58f32f6199400a11655d607780b80219493123dedbb347e
+
+ARG PIP_INDEX_URL
+
+RUN if [ -n "$PIP_INDEX_URL" ]; then \
+        pip install --no-cache-dir -i "$PIP_INDEX_URL" piper-tts scipy numpy mido faster-whisper; \
+    else \
+        pip install --no-cache-dir piper-tts scipy numpy mido faster-whisper; \
+    fi
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fluidsynth fluid-soundfont-gm \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu128
+ARG TORCH_WHEEL_BASE_URL=https://download.pytorch.org/whl/cu128
+
+# The upstream image ships torch 2.2/cu121, whose kernels stop at sm_90.
+# CUDA 12.8 wheels add the Blackwell (sm_120) kernels required here.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --resume-retries 100 --timeout 120 --index-url "$TORCH_INDEX_URL" \
+        "$TORCH_WHEEL_BASE_URL/torch-2.7.1%2Bcu128-cp310-cp310-manylinux_2_28_x86_64.whl" \
+        "$TORCH_WHEEL_BASE_URL/torchaudio-2.7.1%2Bcu128-cp310-cp310-manylinux_2_28_x86_64.whl"

@@ -183,6 +183,26 @@ persona and source-rewrite endpoints have been removed.
 
 Operations that need to touch a live device session — head servos, MCP dispatch, TTS injection. Exposed by `custom-providers/xiaozhi-patches/http_server.py`.
 
+## Optional simulator profile
+
+```mermaid
+flowchart LR
+    Browser[LAN browser :8082] --> Simulator[stackchan-simulator]
+    Simulator -->|WS hello, Opus, MCP| Xiaozhi[xiaozhi-server :8000]
+    Simulator -->|fixed HTTP allowlist| XiaozhiHTTP[xiaozhi-server :8003]
+    Simulator --> Behaviour[dotty-behaviour :8090]
+    Simulator --> Bridge[dotty-bridge :8081]
+    Simulator --> Pi[dotty-pi :8091]
+    Xiaozhi --> Pi
+    Xiaozhi --> Behaviour
+```
+
+The simulator is isolated behind the `simulator` Compose profile. Its backend
+owns the device WebSocket, Opus codecs, uploaded test scene, audio samples,
+request log, and admin-token injection. The browser only talks to the
+simulator's same-origin API and `/ws/ui`; arbitrary proxy targets are not
+accepted.
+
 | Endpoint | Purpose |
 |---|---|
 | `POST /xiaozhi/admin/inject-text` | Speak arbitrary text through TTS as if Dotty originated it. Used by face-greeter and proactive prompts. |

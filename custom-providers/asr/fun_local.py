@@ -49,9 +49,11 @@ class ASRProvider(ASRProviderBase):
         self.interface_type = InterfaceType.LOCAL
         self.model_dir = config.get("model_dir")
         self.output_dir = config.get("output_dir")  # 修正配置键名
-        # SenseVoiceSmall mis-detects Korean/Japanese on short or unclear English
-        # audio when left on "auto"; accept an explicit language override from config.
         self.language = config.get("language", "auto")
+        configured_device = str(config.get("device", "cpu")).strip().lower()
+        self.device = "cuda:0" if configured_device == "cuda" else configured_device
+        if self.device != "cpu" and not self.device.startswith("cuda:"):
+            raise ValueError("FunASR device must be cpu, cuda, or cuda:<index>")
         self.delete_audio_file = delete_audio_file
 
         # 确保输出目录存在
@@ -62,7 +64,7 @@ class ASRProvider(ASRProviderBase):
                 vad_kwargs={"max_single_segment_time": 30000},
                 disable_update=True,
                 hub="hf",
-                # device="cuda:0",  # 启用GPU加速
+                device=self.device,
             )
 
     async def speech_to_text(

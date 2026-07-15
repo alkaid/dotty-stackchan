@@ -1,14 +1,25 @@
 services:
+  xiaozhi-base:
+    profiles: [build-only]
+    build:
+      context: .
+      dockerfile: Dockerfile.xiaozhi-base
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu128}
+        TORCH_WHEEL_BASE_URL: ${TORCH_WHEEL_BASE_URL:-https://download.pytorch.org/whl/cu128}
+    image: ${XIAOZHI_BASE_IMAGE:-dotty-xiaozhi-base:torch2.7.1-cu128}
+
   xiaozhi-esp32-server:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        XIAOZHI_BASE_IMAGE: ${XIAOZHI_BASE_IMAGE:-dotty-xiaozhi-base:torch2.7.1-cu128}
     image: ${XIAOZHI_IMAGE_TAG:-xiaozhi-esp32-server-piper:local}
     restart: unless-stopped
     # make setup resolves this to nvidia/all or runc/void, then runs a
-    # ctranslate2 probe through this exact service before starting the stack.
+    # provider-specific CUDA probe through this exact service before starting the stack.
     runtime: ${XIAOZHI_CONTAINER_RUNTIME:-runc}
     environment:
       TZ: ${TZ:-Australia/Brisbane}
@@ -203,6 +214,35 @@ services:
       xiaozhi-esp32-server:
         condition: service_healthy
       dotty-behaviour:
+        condition: service_healthy
+
+  stackchan-simulator:
+    profiles: [simulator]
+    build:
+      context: ./stackchan-simulator
+      dockerfile: Dockerfile
+    image: ${STACKCHAN_SIMULATOR_IMAGE_TAG:-stackchan-simulator:0.1.0}
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: ${TZ:-Australia/Brisbane}
+      PORT: 8082
+      STACKCHAN_DEVICE_ID: ${STACKCHAN_SIMULATOR_DEVICE_ID:-stackchan-sim-001}
+      ASR_LANGUAGE: ${ASR_LANGUAGE:-en}
+      XIAOZHI_WS_URL: ws://xiaozhi-esp32-server:8000/xiaozhi/v1/
+      XIAOZHI_HTTP_URL: http://xiaozhi-esp32-server:8003
+      DOTTY_BEHAVIOUR_URL: http://dotty-behaviour:8090
+      DOTTY_BRIDGE_URL: http://dotty-bridge:8081
+      DOTTY_PI_URL: http://dotty-pi:8091
+      DOTTY_ADMIN_TOKEN: ${DOTTY_ADMIN_TOKEN:-}
+    ports:
+      - "${STACKCHAN_SIMULATOR_PORT:-8082}:8082"
+    depends_on:
+      xiaozhi-esp32-server:
+        condition: service_healthy
+      dotty-behaviour:
+        condition: service_healthy
+      dotty-bridge:
         condition: service_healthy
 
   ollama:

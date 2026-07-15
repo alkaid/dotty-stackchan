@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import os
+import importlib.util
 import shutil
 import stat
 import subprocess
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -64,11 +67,15 @@ def _run_setup(
     docker = fake_bin / "docker"
     docker.write_text(
         "#!/bin/sh\n"
+        f"printf '%s\\n' \"$*\" >> '{tmp_path}/docker-calls.log'\n"
         "if [ \"$1\" = compose ] && [ \"$2\" = version ]; then exit 0; fi\n"
         f"if [ \"$1\" = info ]; then printf '%s\\n' '{runtimes}'; exit 0; fi\n"
         "if [ \"$1\" = compose ] && [ \"$2\" = run ]; then "
+        "printf '%s' \"$*\" | grep -Eq 'torch\\.ones\\(1, device=\"cuda\"\\)|ctranslate2' || exit 97; "
         f"exit {0 if gpu_probe_ok else 1}; fi\n"
         "if [ \"$1\" = compose ]; then exit 0; fi\n"
+        "if [ \"$1\" = image ] && [ \"$2\" = inspect ]; then exit 1; fi\n"
+        "if [ \"$1\" = pull ]; then exit 0; fi\n"
         "exit 1\n"
     )
     docker.chmod(docker.stat().st_mode | stat.S_IXUSR)
@@ -95,10 +102,36 @@ def test_auto_falls_back_to_cpu_without_nvidia_runtime(tmp_path: Path) -> None:
     env = _read_env(tmp_path / ".env")
     assert env["ASR_MODULE"] == "FunASR"
     assert env["ASR_DEVICE"] == "cpu"
-    assert env["ASR_COMPUTE_TYPE"] == "int8"
+    assert env["ASR_COMPUTE_TYPE"] == "float32"
     assert env["XIAOZHI_CONTAINER_RUNTIME"] == "runc"
     assert env["NVIDIA_VISIBLE_DEVICES"] == "void"
-    assert "ASR: FunASR" in (tmp_path / "data/.config.yaml").read_text()
+    config = yaml.safe_load((tmp_path / "data/.config.yaml").read_text())
+    assert config["selected_module"]["ASR"] == "FunASR"
+    assert config["ASR"]["FunASR"]["device"] == "cpu"
+    assert config["ASR"]["FunASR"]["language"] == "auto"
+    assert env["ASR_LANGUAGE"] == "auto"
+
+
+def test_setup_builds_xiaozhi_base_before_application_images(tmp_path: Path) -> None:
+    result = _run_setup(tmp_path, has_cuda=False, asr_lines=["ASR_ACCELERATION=auto"])
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = (tmp_path / "docker-calls.log").read_text().splitlines()
+    base_build = calls.index("compose --profile build-only build xiaozhi-base")
+    application_build = calls.index("compose build")
+    assert base_build < application_build
+
+
+def test_setup_pulls_configured_xiaozhi_base_instead_of_building_it(tmp_path: Path) -> None:
+    image = "registry.example.test/dotty/xiaozhi-base:cu128"
+    result = _run_setup(
+        tmp_path,
+        has_cuda=False,
+        asr_lines=["ASR_ACCELERATION=auto", f"XIAOZHI_BASE_IMAGE={image}"],
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = (tmp_path / "docker-calls.log").read_text().splitlines()
+    assert f"pull {image}" in calls
+    assert "compose --profile build-only build xiaozhi-base" not in calls
 
 
 def test_render_separates_internal_and_client_ports(tmp_path: Path) -> None:
@@ -143,12 +176,16 @@ def test_auto_enables_cuda_when_nvidia_runtime_exists(tmp_path: Path) -> None:
     result = _run_setup(tmp_path, has_cuda=True, asr_lines=["ASR_ACCELERATION=auto"])
     assert result.returncode == 0, result.stdout + result.stderr
     env = _read_env(tmp_path / ".env")
-    assert env["ASR_MODULE"] == "WhisperLocal"
+    assert env["ASR_MODULE"] == "FunASR"
     assert env["ASR_DEVICE"] == "cuda"
-    assert env["ASR_COMPUTE_TYPE"] == "float16"
+    assert env["ASR_COMPUTE_TYPE"] == "float32"
     assert env["XIAOZHI_CONTAINER_RUNTIME"] == "nvidia"
     assert env["NVIDIA_VISIBLE_DEVICES"] == "all"
-    assert "ASR: WhisperLocal" in (tmp_path / "data/.config.yaml").read_text()
+    config = yaml.safe_load((tmp_path / "data/.config.yaml").read_text())
+    assert config["selected_module"]["ASR"] == "FunASR"
+    assert config["ASR"]["FunASR"]["device"] == "cuda"
+    assert config["ASR"]["FunASR"]["language"] == "auto"
+    assert "FunASR CUDA support verified" in result.stdout
 
 
 def test_forced_cpu_wins_when_nvidia_runtime_exists(tmp_path: Path) -> None:
@@ -159,6 +196,28 @@ def test_forced_cpu_wins_when_nvidia_runtime_exists(tmp_path: Path) -> None:
     assert env["ASR_DEVICE"] == "cpu"
     assert env["XIAOZHI_CONTAINER_RUNTIME"] == "runc"
     assert env["NVIDIA_VISIBLE_DEVICES"] == "void"
+
+
+def test_funasr_language_can_be_pinned(tmp_path: Path) -> None:
+    result = _run_setup(
+        tmp_path,
+        has_cuda=False,
+        asr_lines=["ASR_ACCELERATION=cpu", "ASR_LANGUAGE=zh"],
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    config = yaml.safe_load((tmp_path / "data/.config.yaml").read_text())
+    assert config["ASR"]["FunASR"]["language"] == "zh"
+    assert _read_env(tmp_path / ".env")["ASR_LANGUAGE"] == "zh"
+
+
+def test_rejects_unknown_asr_language(tmp_path: Path) -> None:
+    result = _run_setup(
+        tmp_path,
+        has_cuda=False,
+        asr_lines=["ASR_ACCELERATION=cpu", "ASR_LANGUAGE=english"],
+    )
+    assert result.returncode != 0
+    assert "ASR_LANGUAGE must be" in result.stdout
 
 
 def test_existing_explicit_settings_default_to_manual(tmp_path: Path) -> None:
@@ -197,6 +256,25 @@ def test_manual_whisper_cpu_does_not_require_nvidia_runtime(tmp_path: Path) -> N
     assert "Validating xiaozhi CUDA passthrough" not in result.stdout
 
 
+def test_manual_funasr_defaults_to_auto_language_and_float32(tmp_path: Path) -> None:
+    result = _run_setup(
+        tmp_path,
+        has_cuda=False,
+        asr_lines=["ASR_ACCELERATION=manual", "ASR_MODULE=FunASR"],
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    env = _read_env(tmp_path / ".env")
+    config = yaml.safe_load((tmp_path / "data/.config.yaml").read_text())
+    assert env["ASR_LANGUAGE"] == "auto"
+    assert config["ASR"]["FunASR"] == {
+        "type": "fun_local",
+        "model_dir": "models/SenseVoiceSmall",
+        "output_dir": "tmp/",
+        "language": "auto",
+        "device": "cpu",
+    }
+
+
 def test_forced_cuda_fails_without_nvidia_runtime(tmp_path: Path) -> None:
     result = _run_setup(tmp_path, has_cuda=False, asr_lines=["ASR_ACCELERATION=cuda"])
     assert result.returncode != 0
@@ -227,4 +305,65 @@ def test_forced_cuda_fails_when_container_cuda_probe_fails(tmp_path: Path) -> No
         gpu_probe_ok=False,
     )
     assert result.returncode != 0
-    assert "cannot access CUDA with float16" in result.stdout
+    assert "cannot run FunASR on CUDA" in result.stdout
+
+
+def test_funasr_provider_passes_configured_cuda_device(monkeypatch) -> None:
+    calls: list[dict] = []
+
+    class FakeAutoModel:
+        def __init__(self, **kwargs):
+            calls.append(kwargs)
+
+    class FakeLogger:
+        def bind(self, **_kwargs):
+            return self
+
+        def __getattr__(self, _name):
+            return lambda *_args, **_kwargs: None
+
+    modules = {
+        "funasr": types.SimpleNamespace(AutoModel=FakeAutoModel),
+        "psutil": types.SimpleNamespace(
+            virtual_memory=lambda: types.SimpleNamespace(total=8 * 1024**3)
+        ),
+        "config": types.ModuleType("config"),
+        "config.logger": types.SimpleNamespace(setup_logging=lambda: FakeLogger()),
+        "core": types.ModuleType("core"),
+        "core.providers": types.ModuleType("core.providers"),
+        "core.providers.asr": types.ModuleType("core.providers.asr"),
+        "core.providers.asr.utils": types.SimpleNamespace(lang_tag_filter=lambda value: value),
+        "core.providers.asr.base": types.SimpleNamespace(ASRProviderBase=object),
+        "core.providers.asr.dto": types.ModuleType("core.providers.asr.dto"),
+        "core.providers.asr.dto.dto": types.SimpleNamespace(
+            InterfaceType=types.SimpleNamespace(LOCAL="local")
+        ),
+    }
+    for name, module in modules.items():
+        monkeypatch.setitem(sys.modules, name, module)
+
+    path = ROOT / "custom-providers/asr/fun_local.py"
+    spec = importlib.util.spec_from_file_location("fun_local_under_test", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    provider = module.ASRProvider(
+        {
+            "model_dir": "models/SenseVoiceSmall",
+            "output_dir": "tmp",
+            "device": "cuda",
+        },
+        delete_audio_file=True,
+    )
+    assert provider.device == "cuda:0"
+    assert provider.language == "auto"
+    assert calls == [
+        {
+            "model": "models/SenseVoiceSmall",
+            "vad_kwargs": {"max_single_segment_time": 30000},
+            "disable_update": True,
+            "hub": "hf",
+            "device": "cuda:0",
+        }
+    ]

@@ -44,6 +44,7 @@ htmlcov/
 # to regenerate bridge/static/tailwind.min.css.
 node_modules/
 package-lock.json
+!stackchan-simulator/package-lock.json
 
 # `make setup` artifacts. compose.yml is tracked; generated config is local.
 /.config.yaml

@@ -403,6 +403,63 @@ class SimpleHttpServer:
             "question": question,
         })
 
+    async def _dotty_capture_audio(self, request: "web.Request") -> "web.Response":
+        """POST /xiaozhi/admin/capture-audio
+        Body: {"device_id": "<optional>", "duration_ms": int}
+
+        Ask the selected device to capture a short microphone clip. The
+        device posts the captured audio to dotty-behaviour's normal
+        /api/audio/explain endpoint; this route only relays the MCP request.
+        """
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "invalid JSON"}, status=400)
+        if not isinstance(data, dict):
+            return web.json_response({"error": "JSON object required"}, status=400)
+        device_id = data.get("device_id", "")
+        if not isinstance(device_id, str):
+            return web.json_response({"error": "device_id must be a string"}, status=400)
+        device_id = device_id.strip()
+        try:
+            duration_ms = int(data.get("duration_ms", 4000))
+        except (TypeError, ValueError):
+            return web.json_response({"error": "duration_ms must be an int"}, status=400)
+        if not 250 <= duration_ms <= 30000:
+            return web.json_response(
+                {"error": "duration_ms must be between 250 and 30000"}, status=400
+            )
+        if device_id:
+            conn = _dotty_active_connections.get(device_id)
+        else:
+            conn = next(iter(_dotty_active_connections.values()), None)
+        if conn is None:
+            return web.json_response(
+                {"error": "no device connected", "known": list(_dotty_active_connections)},
+                status=503,
+            )
+        import json
+        import time
+        msg = json.dumps({
+            "session_id": getattr(conn, "session_id", ""),
+            "type": "mcp",
+            "payload": {
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {
+                    "name": "self.audio.capture_clip",
+                    "arguments": {"duration_ms": duration_ms},
+                },
+                "id": int(time.time() * 1000) % 0x7FFFFFFF,
+            },
+        })
+        _spawn(conn.websocket.send(msg), name="capture_audio_send")
+        return web.json_response({
+            "ok": True,
+            "device_id": (getattr(conn, "headers", {}) or {}).get("device-id", "") or device_id,
+            "duration_ms": duration_ms,
+        })
+
     async def _dotty_list_songs(self, request: "web.Request") -> "web.Response":
         """GET /xiaozhi/admin/songs — list audio files mounted at
         /opt/xiaozhi-esp32-server/config/assets/songs/.
@@ -742,6 +799,10 @@ class SimpleHttpServer:
                         web.post(
                             "/xiaozhi/admin/take-photo",
                             self._dotty_take_photo,
+                        ),
+                        web.post(
+                            "/xiaozhi/admin/capture-audio",
+                            self._dotty_capture_audio,
                         ),
                         web.post(
                             "/xiaozhi/admin/play-asset",

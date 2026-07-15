@@ -1,17 +1,5 @@
-# Pinned 2026-05-17 from :server_0.9.3.
-FROM ghcr.io/xinnan-tech/xiaozhi-esp32-server@sha256:3accd82a7d1a6c01c58f32f6199400a11655d607780b80219493123dedbb347e
-
-ARG PIP_INDEX_URL
-
-RUN if [ -n "$PIP_INDEX_URL" ]; then \
-        pip install --no-cache-dir -i "$PIP_INDEX_URL" piper-tts scipy numpy mido faster-whisper; \
-    else \
-        pip install --no-cache-dir piper-tts scipy numpy mido faster-whisper; \
-    fi
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends fluidsynth fluid-soundfont-gm \
-    && rm -rf /var/lib/apt/lists/*
+ARG XIAOZHI_BASE_IMAGE=dotty-xiaozhi-base:torch2.7.1-cu128
+FROM ${XIAOZHI_BASE_IMAGE}
 
 # Custom providers and xiaozhi patches are immutable image content. Runtime
 # mounts are reserved for generated config, model weights, state, and firmware.

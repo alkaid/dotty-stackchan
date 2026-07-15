@@ -295,6 +295,25 @@ Response: `{"ok": true}`. dotty-behaviour broadcasts the event to all perception
 
 `POST /api/voice/escalate` is also defined on bridge.py but is non-functional in the current stack — the ZeroClaw voice dispatch layer it depended on was retired in #36, and the only consumer (the Tier1Slim provider) was removed in the 2026-05-29 alignment pass. See [docs/cutover-behaviour.md](./cutover-behaviour.md) for the historical runbook.
 
+## StackChan simulator protocol coverage
+
+The optional `stackchan-simulator` Compose profile implements the device side
+of the Xiaozhi WebSocket protocol. It sends the production handshake headers
+and `hello`, streams 16 kHz mono Opus in 60 ms frames, decodes the 24 kHz Opus
+downlink, and handles `stt`, `tts`, `llm`, `mcp`, `alert`, `system`, and binary
+audio frames. The browser receives decoded PCM from the simulator backend; it
+never receives `DOTTY_ADMIN_TOKEN`.
+
+The simulated MCP server advertises status, volume, state, toggle, head, LED,
+face-identification, camera, and audio-capture tools. Unknown JSON-RPC methods
+return `-32601`. Camera and audio captures use the real
+`/api/vision/explain` and `/api/audio/explain` upload contracts.
+
+The console catalog contains the current 39 machine endpoints: behaviour 16,
+bridge 4, Xiaozhi HTTP 16, and dotty-pi 3. Behaviour and bridge are checked
+against their runtime OpenAPI documents; fixed-route services are kept in a
+declarative manifest.
+
 ## See also
 
 - [hardware.md](./hardware.md) — what emits the device-side frames.
