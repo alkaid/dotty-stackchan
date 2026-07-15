@@ -165,6 +165,28 @@ class PerceptionGetterTests(unittest.TestCase):
         result = bridge_app._dashboard_perception_state_getter()
         self.assertEqual(result, {"dev-1": {"face_present": True}})
 
+    def test_dashboard_state_getter_uses_behaviour_current_state(self):
+        class FakeResp:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"dev-1": {"current_state": "security"}}
+
+        self._patch_get(FakeResp())
+        self.assertEqual(bridge_app._dashboard_state_getter(), "security")
+
+    def test_dashboard_state_getter_falls_back_to_idle(self):
+        class FakeResp:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"dev-1": {"face_present": True}}
+
+        self._patch_get(FakeResp())
+        self.assertEqual(bridge_app._dashboard_state_getter(), "idle")
+
     def test_recent_getter_returns_fetched_list(self):
         class FakeResp:
             def raise_for_status(self):

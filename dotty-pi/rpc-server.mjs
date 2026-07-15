@@ -160,6 +160,12 @@ export class PiRpc {
       if (frame?.type === "message_update") {
         const event = frame.assistantMessageEvent;
         if (event?.type === "text_delta" && event.delta) onText(event.delta);
+        if (event?.type === "toolcall_end") {
+          const toolCall = event.toolCall ?? {};
+          console.log(
+            `dotty-pi tool call name=${toolCall.name ?? "unknown"} id=${toolCall.id ?? "unknown"}`,
+          );
+        }
         continue;
       }
       if (frame?.type === "agent_end") {

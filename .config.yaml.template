@@ -16,7 +16,7 @@ delete_audio: true
 
 selected_module:
   VAD: SileroVAD
-  ASR: <ASR_MODULE>       # FunASR by default; WhisperLocal is manual-only
+  ASR: <ASR_MODULE>       # FunASR default; WhisperLocal / SenseVoiceOnnx opt-in
   LLM: PiVoiceLLM         # default: agent loop hosted in the dotty-pi container (requires the sibling dotty-pi service)
   # LLM: OpenAICompat      # <-- alternate: direct OpenAI-compatible LLM
   TTS: ChatTTS
@@ -85,6 +85,17 @@ ASR:
     # Optional decoder bias — short list of canonical phrases improves
     # recall on rare names. Keep under ~200 chars to avoid prompt bleed.
     initial_prompt: null
+  SenseVoiceOnnx:
+    # int8 sherpa-onnx SenseVoiceSmall — no PyTorch, lighter for Pi-class hosts
+    # (#135). Opt-in: set selected_module.ASR: SenseVoiceOnnx to use it.
+    # Requires `make fetch-models` (models/SenseVoiceSmall-onnx/) + the
+    # SenseVoiceSmall-onnx model mount in compose.yml.
+    type: sensevoice_onnx
+    model_dir: models/SenseVoiceSmall-onnx
+    output_dir: tmp/
+    language: en          # auto, zh, en, ja, ko, yue
+    num_threads: 2
+    use_itn: true
 
 TTS:
   ChatTTS:

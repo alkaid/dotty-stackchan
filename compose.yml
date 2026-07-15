@@ -44,6 +44,7 @@ services:
       - ./data/.config.yaml:/opt/xiaozhi-esp32-server/data/.config.yaml:ro
       - ./data/bin:/opt/xiaozhi-esp32-server/data/bin
       - ./models/SenseVoiceSmall:/opt/xiaozhi-esp32-server/models/SenseVoiceSmall:ro
+      - ./models/SenseVoiceSmall-onnx:/opt/xiaozhi-esp32-server/models/SenseVoiceSmall-onnx:ro
       - ./models/piper:/opt/xiaozhi-esp32-server/models/piper:ro
       - ./models/chattts:/opt/xiaozhi-esp32-server/models/chattts:ro
       - ./models/whisper-small.en-ct2:/opt/xiaozhi-esp32-server/models/whisper-small.en-ct2:ro
@@ -129,13 +130,13 @@ services:
       GREETER_STATE_PATH: /var/lib/dotty-behaviour/state/greeter_state.json
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY-}
       VISION_API_KEY: ${VISION_API_KEY-}
-      VISION_MODEL: ${VISION_MODEL:-google/gemini-2.0-flash-001}
+      VISION_MODEL: ${VISION_MODEL:-google/gemini-3.1-flash-lite}
       VISION_API_URL: ${VISION_API_URL:-https://openrouter.ai/api/v1/chat/completions}
       VLM_API_KEY: ${VLM_API_KEY-}
-      VLM_MODEL: ${VLM_MODEL:-google/gemini-2.0-flash-001}
+      VLM_MODEL: ${VLM_MODEL:-google/gemini-3.1-flash-lite}
       VLM_API_URL: ${VLM_API_URL:-https://openrouter.ai/api/v1/chat/completions}
       AUDIO_CAPTION_API_KEY: ${AUDIO_CAPTION_API_KEY-}
-      AUDIO_CAPTION_MODEL: ${AUDIO_CAPTION_MODEL:-google/gemini-2.0-flash-001}
+      AUDIO_CAPTION_MODEL: ${AUDIO_CAPTION_MODEL:-google/gemini-2.5-flash}
       AUDIO_CAPTION_API_URL: ${AUDIO_CAPTION_API_URL:-https://openrouter.ai/api/v1/chat/completions}
       FACE_GREET_TEXT: ${FACE_GREET_TEXT-Hi!}
       FACE_GREET_MIN_INTERVAL_SEC: ${FACE_GREET_MIN_INTERVAL_SEC:-30}

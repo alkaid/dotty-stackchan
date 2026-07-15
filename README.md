@@ -14,7 +14,7 @@
 
 Dotty is a fully self-hosted voice stack for the M5Stack StackChan desktop robot. Open-source firmware on the robot, [xiaozhi-esp32-server](https://github.com/xinnan-tech/xiaozhi-esp32-server) for voice I/O, and a local **pi** coding agent as the brain. ASR, TTS, and session state all run on your own hardware. The LLM is pluggable: the shipped configuration targets a sub2api-compatible endpoint with separate normal and `think_hard` model IDs. Enable the bundled [Ollama profile](./docs/cookbook/run-fully-local.md), use [llama-swap](./docs/cookbook/llama-swap-concurrent-models.md), or point at another OpenAI-compatible API.
 
-Out of the box, Dotty ships in **Kid Mode** — the persona plus a per-turn prompt sandwich keep responses age-appropriate and on-topic. This is prompt-level steering, **not** an output content filter (a blocked-words filter is planned — see [#138](https://github.com/BrettKinny/dotty-stackchan/issues/138)), and it's no substitute for supervision. Disable Kid Mode for a general-purpose assistant.
+Out of the box, Dotty ships in **Kid Mode** — the persona and per-turn prompt sandwich steer responses toward age-appropriate topics, while a thin blocked-words filter replaces matching spoken turns before TTS. The filter is a bypassable backstop, not a safety guarantee or substitute for supervision. Disable Kid Mode for a general-purpose assistant.
 
 ## Why I built this
 

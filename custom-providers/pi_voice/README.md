@@ -22,10 +22,8 @@ The HARD-CONSTRAINTS sandwich ships: every turn is wrapped server-side
 via `_wrap_with_sandwich` / `build_turn_suffix(KID_MODE)` (from
 `core.utils.textUtils`) before the prompt reaches pi.
 
-Still open:
-- Memory write-back from xiaozhi-server (PiVoiceLLM does not yet post
-  conversation logs / remember-markers; that belongs in the pi
-  extension — see the open question below).
+Memory persistence is owned by `dotty-pi-ext`: explicit remember tools write
+facts, and its `agent_end` hook records completed conversations in `brain.db`.
 
 ## Architecture
 
@@ -137,13 +135,10 @@ retired ZeroClaw bridge.
   pi's `docs/rpc.md`; `assistantMessageEvent` filtering rule from the
   spike telemetry.
 
-## Open questions still on the table
+## Runtime prompt policy and persona state
 
-- **Memory write-back.** PiVoiceLLM does not yet persist conversation
-  turns or remember-markers. Memory write-back belongs in the pi
-  extension: a small write (sqlite_brain_db.write) triggered by a
-  `[REMEMBER: …]` marker in the final assistant text, plus a per-turn
-  log row.
+- **Memory write-back.** `remember` / `remember_person` handle explicit writes,
+  and the extension's `agent_end` hook records each completed conversation.
 - **Persona file location.** Persona files are baked into the `dotty-pi`
   image under `/opt/dotty-pi/personas/`; `DOTTY_PI_SYSTEM_PROMPT_FILE`
   selects the active file when the pi process starts.

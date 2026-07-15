@@ -13,7 +13,7 @@ Symptom-first lookup table covering common and obscure failure modes. Pair with 
 
 **Symptom:** The robot appears to process the utterance (logs show ASR text and an LLM response), but no audio plays back. The TTS stage produces zero-length or near-zero-length audio.
 
-**Cause:** Language mismatch between the TTS voice and the response text. The response language follows ASR, but a fixed-language TTS voice cannot synthesize every language. The default local Piper voice is `en_GB-cori-medium`; it does not select another voice automatically.
+**Cause:** Language mismatch between the TTS voice and the response text. The response language follows ASR, but a fixed-language fallback voice cannot synthesize every language. The default ChatTTS path is bilingual; LocalPiper and individual EdgeTTS voices are language-specific.
 
 **Fix:**
 1. Check the xiaozhi-server logs for the ASR language tag and LLM response text.
@@ -114,9 +114,9 @@ provider source is not bind-mounted.
 | `😴` | Sleepy |
 
 **Fix:**
-1. Check the xiaozhi-server logs for the raw LLM response. Two enforcement layers apply: (a) the configured persona prompt (`personas/dotty_voice.md`), (b) the `prompt:` key in `data/.config.yaml`. If the response still has no emoji after both layers, something is fundamentally wrong with the response path.
+1. Check the xiaozhi-server logs for the raw LLM response. PiVoiceLLM's per-turn suffix requests an allowed emoji and `_enforce_leading_emoji()` prepends neutral `😐` when it is absent. A prefix-free response therefore indicates the deployed provider is stale or bypassed.
 2. If the response has an emoji but the face doesn't change, it may be an unsupported emoji. Only the nine listed above are mapped to animations.
-3. On the `PiVoiceLLM` path the `_ensure_emoji_prefix` fallback in `bridge.py` is not active — emoji enforcement relies entirely on the persona prompt and the `.config.yaml` `prompt:` block.
+3. Confirm the selected provider is PiVoiceLLM and the deployed `pi_voice.py` contains `_enforce_leading_emoji()`. The retired bridge fallback is unrelated.
 
 ---
 

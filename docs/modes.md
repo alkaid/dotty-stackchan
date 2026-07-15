@@ -43,7 +43,7 @@ The firmware boots into `idle` with both toggles **off**. The bridge resyncs tog
 | `story_time` | warm `(100,40,0)` | NORMAL | Long-running interactive story. | Phase 7 PENDING — backing path unimplemented |
 | `security` | white `(80,80,80)` **flashing 1 Hz** across all 6 left pixels (`kSecurityFlashHalfMs = 500`) | SURVEILLANCE | Wide deliberate scan, serious face, periodic photo + audio capture. No proactive greet. | Phase 8 PENDING — `SecurityCycle` consumer is scaffolding, not a live path |
 | `sleep` | very dim blue `(0,0,16)` | SLEEPY | Head face-down + centred, servo torque off (with `kSleepTorqueReleaseTimeoutMs = 3000` fallback), sleeping emoji on screen, ambient awareness paused. Wakes on face / voice / head-pet. | firmware-only quiescence (Phase 5) |
-| `dance` | rainbow sweep (left ring) | NORMAL | Transient performance — choreography + audio. Pre-existing dance handler. | `receiveAudioHandle.py::_handle_dance` |
+| `dance` | rainbow sweep (left ring) | NORMAL | Transient performance — server-owned named choreography + audio. Firmware holds the cooperative motion lock so face tracking and idle motion cannot overwrite MCP keyframes. | `receiveAudioHandle.py::_handle_dance` |
 
 The `idle → talk` trigger is the firmware `face_detected` event (any face, family or stranger) **or** `onVoiceListening` (the WS opens for a wake-word / inject-text / head-pet hold). dotty-behaviour runs VLM recognition in parallel and feeds the resulting identity into the speaker resolver / persona — recognition does **not** gate the state transition.
 
@@ -193,7 +193,7 @@ Both `kid_mode` and `smart_mode` are voice-untoggleable — they are guardian-co
 | `story_time` | Phase 7 PENDING — backing path unimplemented | n/a (pending) | n/a (pending) |
 | `security` | Phase 8 PENDING — `SecurityCycle` consumer is scaffolding, no live path | n/a (pending) | n/a (pending) |
 | `sleep` | mic stays on for "wake up"; no LLM round-trip | n/a | n/a |
-| `dance` | bridge handler dispatches choreography + audio file | n/a | dance MCP |
+| `dance` | xiaozhi handler dispatches choreography + audio file; firmware state supplies exclusive motion ownership, not a second choreography | n/a | head/LED MCP |
 
 `smart_mode` is a toggle only and sticky across turns; the backing model-swap it was designed to drive is v2 scope and not wired on the `PiVoiceLLM` path. `story_time` (when implemented) would be the only voice path with its own session memory (Phase 7 pending).
 

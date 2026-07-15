@@ -273,8 +273,8 @@ class LLMProvider(LLMProviderBase):
 
         Uses streaming by default.  The interface matches LLMProviderBase.
         #157: in kid mode the stream is wrapped in the shared blocked-content
-        filter (sentence-buffered, so nothing reaches TTS before its sentence
-        is checked; a hit replaces the rest of the turn). The emoji-prefix
+        filter (full-turn buffered, so nothing reaches TTS before the complete
+        response is checked; a hit replaces the whole turn). The emoji-prefix
         enforcement inside _response_stream runs first, so the filter sees —
         and preserves — the leading-emoji contract.
         """

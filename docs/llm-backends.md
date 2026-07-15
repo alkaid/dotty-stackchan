@@ -19,7 +19,7 @@ and the matching block under `LLM:` in `.config.yaml`.
 | **Cost** | Pay-per-token | Free (electricity + hardware) | Free (electricity + hardware) |
 | **Privacy** | Tokens sent to cloud provider | Fully local, nothing leaves LAN | Fully local |
 | **Setup complexity** | Low — API key + model name | Medium — GPU, Docker, GGUF download | Medium — dotty-pi container + llama-swap |
-| **Memory / tools** | None | None | Yes — memory_lookup, remember, think_hard, take_photo, play_song |
+| **Memory / tools** | None | None | Yes — memory_lookup, recall_person, remember, remember_person, think_hard, take_photo, play_song |
 | **Hot-swappable** | Restart container | Restart container | Restart container |
 | **Best for** | Quick start, best-in-class models | Privacy + concurrent multi-model serving | **Default — snappy voice with full tool support** |
 
@@ -132,22 +132,25 @@ LLM:
 
 The default in the shipped `.config.yaml`. The `PiVoiceLLM` provider routes each voice turn to the **dotty-pi container** — the pi coding agent running on the same Docker host as xiaozhi-server.
 
-`PiHttpClient` drives the agent by calling the dotty-pi HTTP RPC wrapper on `dotty-pi:8091`. The wrapper owns `pi --mode rpc` inside the dotty-pi container. The agent's outer loop uses `dotty-simple` through sub2api and loads the **dotty-pi-ext extension**, which exposes five voice-focused tools:
+`PiHttpClient` drives the agent by calling the dotty-pi HTTP RPC wrapper on `dotty-pi:8091`. The wrapper owns `pi --mode rpc` inside the dotty-pi container. The agent's outer loop uses the provider and model configured by `DOTTY_PI_PROVIDER` / `DOTTY_PI_MODEL` and loads the **dotty-pi-ext extension**, which exposes seven voice-focused tools:
 
 | Tool | Purpose |
 |---|---|
 | `memory_lookup` | Recall a fact from past conversations (FTS on brain.db) |
+| `recall_person` | Recall approved facts about a named household member |
 | `remember` | Stash a new fact into brain.db |
+| `remember_person` | Store a fact about a named household member |
 | `think_hard` | Escalate a hard question to `qwen3.6:27b-think` |
 | `take_photo` | Describe what Dotty's camera sees via a VLM |
 | `play_song` | Play a song through the speaker |
 
 Only TTS-bound text streams back to xiaozhi-server — tool results stay internal to the agent loop.
+PiVoiceLLM does not use its `.config.yaml` `persona_file` or forward xiaozhi's configured system dialogue. The dotty-pi RPC wrapper loads `DOTTY_PI_SYSTEM_PROMPT_FILE`, and PiVoiceLLM appends the language, format, and Kid Mode policy to every user turn.
 
 ### Prerequisites
 
 - dotty-pi container running on the Docker host.
-- llama-swap running and reachable by the dotty-pi container (`qwen3.5:4b` for the outer loop; `qwen3.6:27b-think` for `think_hard`).
+- The configured OpenAI-compatible model endpoint reachable by the dotty-pi container.
 
 ### `.config.yaml` snippet
 

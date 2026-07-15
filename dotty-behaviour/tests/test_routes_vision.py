@@ -7,9 +7,35 @@ import io
 from dataclasses import dataclass, field
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 from main import app
+
+
+@pytest.fixture(autouse=True)
+def _disable_greeting_side_effects(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep route tests from dispatching real greeting requests.
+
+    A room-view identity match broadcasts ``face_recognized``. Both greeter
+    consumers observe it: ProactiveGreeter can call the narrative LLM, while
+    FaceGreeter can call xiaozhi ``say``. Cancelling TestClient cannot stop a
+    blocking requests worker already running in the default executor, so an
+    unlucky scheduling order waits for the production timeout. Greeter
+    behaviour is covered with fakes elsewhere; this module owns only vision
+    route orchestration and the event payload.
+    """
+    from consumers import FaceGreeter
+
+    async def _ignore_named_greeting(*_args, **_kwargs) -> None:
+        return None
+
+    monkeypatch.setenv("GREETER_ENABLED", "false")
+    monkeypatch.setattr(
+        FaceGreeter,
+        "_handle_face_recognized",
+        _ignore_named_greeting,
+    )
 
 
 @dataclass

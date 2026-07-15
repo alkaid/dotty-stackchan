@@ -234,10 +234,19 @@ class PiClient:
 
             if ftype == "message_update":
                 ame = frame.get("assistantMessageEvent")
-                if isinstance(ame, dict) and ame.get("type") == "text_delta":
-                    delta = ame.get("delta")
-                    if isinstance(delta, str) and delta:
-                        yield delta
+                if isinstance(ame, dict):
+                    if ame.get("type") == "text_delta":
+                        delta = ame.get("delta")
+                        if isinstance(delta, str) and delta:
+                            yield delta
+                    elif ame.get("type") == "toolcall_end":
+                        tool_call = ame.get("toolCall")
+                        if isinstance(tool_call, dict):
+                            logger.info(
+                                "PiClient: tool call name=%s id=%s",
+                                tool_call.get("name", "unknown"),
+                                tool_call.get("id", "unknown"),
+                            )
                 # thinking_delta, thinking_start, thinking_end and any
                 # other message_update sub-types are filtered out here.
                 continue

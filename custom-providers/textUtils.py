@@ -147,17 +147,14 @@ def content_filter_match(text: str) -> "tuple[str, re.Match] | None":
 def filter_tts_stream(chunks, kid_mode, on_hit=None):
     """Wrap a TTS-bound text-chunk stream in the kid-mode content filter.
 
-    Buffers to _SENTENCE_BOUNDARY so no text is emitted before its full
-    sentence has been checked — the tier regexes are single-word patterns,
-    so a blocked term can never straddle a sentence boundary. Clean streams
-    pass through with identical total text, re-chunked at sentence
-    granularity (the TTS layer buffers to sentences anyway, so spoken
-    latency is unchanged).
+    In kid mode, consume the full turn before emitting anything. This makes
+    the safety decision atomic and, critically for PiVoiceLLM, drains the RPC
+    iterator through its ``agent_end`` frame instead of abandoning a live pi
+    turn as soon as a blocked sentence is found. Clean streams retain their
+    original chunking after the full-turn check.
 
     On a hit: call on_hit(tier, match) if given, emit
-    CONTENT_FILTER_REPLACEMENT — minus its leading emoji when speech has
-    already gone out, preserving the one-emoji-per-reply contract — and end
-    the turn; the rest of the source stream is dropped.
+    CONTENT_FILTER_REPLACEMENT and replace the whole turn.
 
     kid_mode False → transparent passthrough, zero behaviour change.
     """
@@ -165,35 +162,15 @@ def filter_tts_stream(chunks, kid_mode, on_hit=None):
         yield from chunks
         return
 
-    def _blocked(piece: str, emitted: bool):
-        hit = content_filter_match(piece)
-        if hit is None:
-            return None
+    buffered = [chunk for chunk in chunks if chunk]
+    hit = content_filter_match("".join(buffered))
+    if hit is not None:
         if on_hit is not None:
             on_hit(*hit)
-        if emitted:
-            return CONTENT_FILTER_REPLACEMENT[len(FALLBACK_EMOJI):].lstrip()
-        return CONTENT_FILTER_REPLACEMENT
+        yield CONTENT_FILTER_REPLACEMENT
+        return
 
-    buf = ""
-    emitted = False
-    for chunk in chunks:
-        buf += chunk or ""
-        last_end = 0
-        for boundary in _SENTENCE_BOUNDARY.finditer(buf):
-            sentence = buf[last_end:boundary.end()]
-            replacement = _blocked(sentence, emitted)
-            if replacement is not None:
-                yield replacement
-                return
-            yield sentence
-            emitted = True
-            last_end = boundary.end()
-        if last_end:
-            buf = buf[last_end:]
-    if buf:
-        replacement = _blocked(buf, emitted)
-        yield replacement if replacement is not None else buf
+    yield from buffered
 
 # Enforced subset (bridge.py ALLOWED_EMOJIS): 😊 😆 😢 😮 🤔 😠 😐 😍 😴
 EMOJI_MAP = {

@@ -8,7 +8,7 @@ description: xiaozhi-esp32-server pipeline stages -- VAD, ASR, LLM proxy, and TT
 ## TL;DR
 
 - **Server** is `xinnan-tech/xiaozhi-esp32-server` running in Docker on a Linux host. Plugin-based: each of VAD, ASR, LLM, TTS, Memory, Intent is a swappable provider picked via `data/.config.yaml`'s `selected_module:` block.
-- Our live pipeline: **SileroVAD** (speech-end) → **FunASR SenseVoiceSmall** (`auto` language, CUDA when available) → **PiVoiceLLM** custom provider (current default; HTTP RPC to the `dotty-pi` container) or **OpenAICompat** → bilingual **ChatTTS** (CUDA when available; Piper and EdgeTTS fallbacks). WhisperLocal remains an explicit manual alternative.
+- Our live pipeline: **SileroVAD** (speech-end) → **FunASR SenseVoiceSmall** (`auto` language, CUDA when available), opt-in **SenseVoiceOnnx** (int8, no PyTorch), or manual **WhisperLocal** → **PiVoiceLLM** custom provider (current default; HTTP RPC to the `dotty-pi` container) or **OpenAICompat** → bilingual **ChatTTS** (CUDA when available; Piper and EdgeTTS fallbacks).
 - The xiaozhi container also runs a perception relay (`EventTextMessageHandler`) that forwards firmware `face_detected` / `face_lost` / `sound_event` / `state_changed` frames to `dotty-behaviour`'s `/api/perception/event`.
 - **Emotion** is not a pipeline stage — it's extracted post-hoc from the LLM's emoji prefix and emitted as a separate WS frame. See [protocols.md](./protocols.md#emotion-protocol).
 - Custom providers are copied into the image by the root Dockerfile at `/opt/xiaozhi-esp32-server/core/providers/{asr,tts,llm}/…`.
@@ -21,7 +21,7 @@ From the `xinnan-tech/xiaozhi-esp32-server` README (see [references.md](./refere
 | Stage | Provider options |
 |---|---|
 | **VAD** | SileroVAD (local, free) |
-| **ASR (local)** | FunASR, SherpaASR |
+| **ASR (local)** | FunASR, SherpaASR, SenseVoiceOnnx (our opt-in no-torch int8 sherpa-onnx provider, #135) |
 | **ASR (cloud)** | FunASRServer, Volcano Engine, iFLYTEK, Tencent Cloud, Alibaba Cloud, Baidu Cloud, OpenAI |
 | **LLM** | OpenAI-compatible (Alibaba Bailian, Volcano, DeepSeek, Zhipu, Gemini, iFLYTEK), Ollama, Dify, FastGPT, Coze, Xinference, HomeAssistant |
 | **VLLM** (vision) | Alibaba Bailian, Zhipu ChatGLM |
@@ -64,6 +64,16 @@ Model: `FunAudioLLM/SenseVoiceSmall` on HuggingFace. From the model card:
 Deployment: mounted as a file-level override at `/opt/xiaozhi-esp32-server/core/providers/asr/fun_local.py`.
 
 **Model assets.** `make fetch-models` downloads the five files SenseVoiceSmall needs into `models/SenseVoiceSmall/`: `model.pt`, `config.yaml`, `configuration.json`, `am.mvn`, and the SentencePiece tokenizer `chn_jpn_yue_eng_ko_spectok.bpe.model`. The tokenizer asset is load-bearing — without it funasr fails to build with `sentencepiece … bpemodel=None` and the container crash-loops (issue #124). `make doctor` size-checks each of these.
+
+### ASR — SenseVoiceOnnx (sherpa-onnx int8, opt-in) (#135)
+
+Same SenseVoiceSmall model family as the FunASR provider above, but run through the **sherpa-onnx / ONNX Runtime** int8 export instead of FunASR's PyTorch path — **no `torch` dependency**, and the on-disk model is ~230 MB versus the ~900 MB `model.pt`. This makes it the better fit for Pi-class / low-RAM hosts. It coexists with FunASR, which stays the no-GPU default; flipping the default to this provider is a separate, benchmark-gated follow-up (#135).
+
+- **Select:** `selected_module.ASR: SenseVoiceOnnx` in `.config.yaml` (type `sensevoice_onnx`).
+- **Provider:** mounted as a file-level override at `/opt/xiaozhi-esp32-server/core/providers/asr/sensevoice_onnx.py`.
+- **Model assets:** `make fetch-models` downloads `model.int8.onnx` + `tokens.txt` into `models/SenseVoiceSmall-onnx/`; `make doctor` size-checks them.
+- **Language:** `language: en` is preserved — sherpa-onnx takes the language natively, so no English-pin patch is needed.
+- **RTF (CPU):** measured on the Docker host (Intel i5-3570, 4-core, 2012-era — *weaker* than the Pi-5 target, so a conservative floor) on a 7.15 s English utterance: **RTF ≈ 0.12 at `num_threads: 2`** (~8× real-time), 0.23 at 1 thread. Comfortably real-time without a GPU. (Transcript verified correct.) The Pi 5 / RK3588-class A76 number the issue targets (~0.05–0.10) is still pending and gates the eventual default-flip; the provider logs an `ASR-RTF` line per utterance so the on-target figure can be read straight from production logs after deploy.
 
 ### LLM — provider selected at a time
 
@@ -136,7 +146,7 @@ xiaozhi-server doesn't run an emotion classifier. It **strips the leading emoji*
 
 The TTS provider receives text **with the emoji already stripped**. The device receives the emotion and sets the face animation; the speaker plays the clean text.
 
-**Surprising consequence**: the LLM must emit the emoji as its very first character for emotion dispatch to fire. On the `PiVoiceLLM` path, enforcement relies on the persona prompt and the `.config.yaml` `prompt:` block — the `bridge.py` `_ensure_emoji_prefix` fallback only applies to the retired ZeroClaw path. See [protocols.md](./protocols.md#emotion-protocol) for the enforcement layers.
+**Wire consequence**: the text reaching emotion dispatch must begin with an allowed emoji. On PiVoiceLLM, the per-turn suffix requests one and `_enforce_leading_emoji()` guarantees an allowed prefix, using neutral `😐` when the model omits it. Persona files and `.config.yaml`'s system prompt are not forwarded on this path. See [protocols.md](./protocols.md#emotion-protocol).
 
 **Note — we don't use SenseVoice's built-in SER.** The model card advertises speech emotion recognition and audio-event detection (bgm / applause / laughter / crying / coughing / sneezing). xiaozhi-server's FunASR provider returns only the transcription text; the SER/AED fields aren't piped through. That's a genuine latent capability — see [latent-capabilities.md](./latent-capabilities.md#voice-pipeline-unused).
 

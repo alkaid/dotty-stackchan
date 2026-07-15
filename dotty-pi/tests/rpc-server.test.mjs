@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { buildPiArgs, createRpcServer } from "../rpc-server.mjs";
+import { buildPiArgs, createRpcServer, PiRpc } from "../rpc-server.mjs";
 
 function deferred() {
   let resolve;
@@ -55,6 +55,33 @@ test("simple route reasoning selects the configured pi thinking level", () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("tool completion is logged without arguments on the live HTTP RPC path", async () => {
+  const rpc = new PiRpc();
+  rpc.send = () => {};
+  const frames = [
+    { type: "response", command: "prompt", id: "turn-1", success: true },
+    {
+      type: "message_update",
+      assistantMessageEvent: {
+        type: "toolcall_end",
+        toolCall: { id: "tool-7", name: "remember", arguments: { secret: "value" } },
+      },
+    },
+    { type: "agent_end" },
+  ];
+  rpc.nextFrame = async () => frames.shift();
+  const lines = [];
+  const originalLog = console.log;
+  console.log = (line) => lines.push(String(line));
+  try {
+    await rpc.turn("remember this", () => {});
+  } finally {
+    console.log = originalLog;
+  }
+  assert.deepEqual(lines, ["dotty-pi tool call name=remember id=tool-7"]);
+  assert.doesNotMatch(lines[0], /secret|value/);
 });
 
 test("health checks do not release an active turn", async () => {

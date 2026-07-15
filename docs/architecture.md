@@ -269,7 +269,8 @@ The canonical working copies live in this repo.
 | `custom-providers/edge_stream/` | Baked into xiaozhi image under `core/providers/tts/` | Streaming EdgeTTS provider |
 | `custom-providers/piper_local/` | Baked into xiaozhi image under `core/providers/tts/` | Local Piper TTS provider |
 | `custom-providers/asr/fun_local.py` | Baked into xiaozhi image under `core/providers/asr/` | Patched FunASR provider (adds `language` config key) |
-| `custom-providers/xiaozhi-patches/` | Baked into xiaozhi image as drop-in overrides | Admin routes + shared_llm singleton |
+| `custom-providers/asr/sensevoice_onnx.py` | Baked into xiaozhi image under `core/providers/asr/` | Optional int8 sherpa-onnx SenseVoice provider |
+| `custom-providers/xiaozhi-patches/` | Baked into xiaozhi image as drop-in overrides | Admin routes, OTA handling, and serialized firmware MCP commands |
 | `.config.yaml` | Docker host `data/.config.yaml` | xiaozhi-server config override |
 | `scripts/deploy-stack.sh` | run from admin workstation | Sync repo and deploy the full stack |
 

@@ -549,9 +549,19 @@ def _dashboard_perception_recent_getter(
 
 
 def _dashboard_state_getter() -> str:
-    """Return the current State of Dotty. Without a perception bus the
-    bridge can't know — fall through to 'idle' so the dashboard renders
-    safely. Real state is mirrored on dotty-behaviour."""
+    """Return the current State mirrored by dotty-behaviour.
+
+    The deployment has one robot, so use the first valid per-device state.
+    If behaviour is unavailable or has not observed a state transition yet,
+    retain the dashboard's historical safe fallback of ``idle``.
+    """
+    states = _dashboard_perception_state_getter()
+    for device_state in states.values():
+        if not isinstance(device_state, dict):
+            continue
+        current = device_state.get("current_state")
+        if isinstance(current, str) and current:
+            return current
     return "idle"
 
 

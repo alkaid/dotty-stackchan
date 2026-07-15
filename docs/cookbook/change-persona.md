@@ -5,14 +5,14 @@ description: Swap Dotty's personality by editing the persona prompt or pointing 
 
 # Change Persona
 
-Dotty's personality comes from a persona file loaded as the LLM system prompt. **Where** that file lives depends on which LLM provider is active.
+Persona-file support depends on which LLM provider is active.
 
 Three personas ship in `personas/`:
 
 | File | Style | Used by |
 |---|---|---|
 | `default.md` | Cheerful, curious desktop robot. The general-purpose persona for generic providers. | `OpenAICompat` |
-| `dotty_voice.md` | Voice-tuned variant of `default.md` — same character but pruned for short replies, with the tool catalogue and `[REMEMBER: ...]` markers baked in. | `PiVoiceLLM` |
+| `dotty_voice.md` | Voice-tuned default persona. | `PiVoiceLLM` via `DOTTY_PI_SYSTEM_PROMPT_FILE` |
 | `smart.md` | More capable, allowed longer answers — for when `smart_mode` is on and the cloud model is doing the heavy lifting. | optional override |
 
 ## Which file controls the persona?
@@ -43,7 +43,7 @@ For `OpenAICompat`, change `LLM.OpenAICompat.persona_file` in
 
 ## Create your own persona
 
-1. Copy an existing file: `cp personas/dotty_voice.md personas/pirate.md`.
+1. Copy an existing file: `cp personas/default.md personas/pirate.md`.
 2. Edit the new file. **Keep the emoji instruction line** — the firmware needs it to animate the face. See [emoji-mapping.md](../emoji-mapping.md) for the allowlist (😊😆😢😮🤔😠😐😍😴).
 3. Rebuild the relevant image so the new file is included:
 
@@ -63,5 +63,5 @@ changes require an image rebuild.
 
 ## Notes
 
-- Always keep the emoji-leader rule in any persona — removing it breaks face animations. The persona prompt and the xiaozhi-server system prompt are the two enforcement layers.
+- For persona-loading providers, retain the emoji-leader rule. PiVoiceLLM additionally guarantees a neutral leading fallback in code.
 - See [protocols.md](../protocols.md) for the emoji → face frame mapping.

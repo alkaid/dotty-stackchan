@@ -9,6 +9,9 @@ PIPER_JSON       := en_GB-cori-medium.onnx.json
 WHISPER_REPO     := https://huggingface.co/Systran/faster-whisper-small.en
 WHISPER_DIR      := models/whisper-small.en-ct2
 WHISPER_FILES    := config.json model.bin tokenizer.json vocabulary.txt
+SENSEVOICE_ONNX_REPO  := https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17
+SENSEVOICE_ONNX_DIR   := models/SenseVoiceSmall-onnx
+SENSEVOICE_ONNX_FILES := model.int8.onnx tokens.txt
 CHAT_TTS_REPO    ?= https://hf-mirror.com/2Noise/ChatTTS
 CHAT_TTS_DIR     := models/chattts
 CHAT_TTS_FILES   := asset/Decoder.safetensors asset/DVAE.safetensors \
@@ -454,6 +457,18 @@ fetch-models: ## Download SenseVoiceSmall + ChatTTS models (plus fallback voices
 	  else \
 	    echo "  Downloading $$f ..."; \
 	    dl_file "$(WHISPER_REPO)/resolve/main/$$f" "$(WHISPER_DIR)/$$f" || exit 1; \
+	  fi; \
+	done
+	@echo ""
+	@# ── sherpa-onnx SenseVoice (int8, no PyTorch — issue #135) ──
+	@mkdir -p $(SENSEVOICE_ONNX_DIR)
+	@echo -e "$(BOLD)[sherpa-onnx SenseVoice int8]$(RESET)"
+	@$(DL_FILE); for f in $(SENSEVOICE_ONNX_FILES); do \
+	  if [ -f "$(SENSEVOICE_ONNX_DIR)/$$f" ]; then \
+	    echo -e "  $(GREEN)$$f — already exists, skipping$(RESET)"; \
+	  else \
+	    echo "  Downloading $$f ..."; \
+	    dl_file "$(SENSEVOICE_ONNX_REPO)/resolve/main/$$f" "$(SENSEVOICE_ONNX_DIR)/$$f" || exit 1; \
 	  fi; \
 	done
 	@echo ""

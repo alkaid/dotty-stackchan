@@ -22,10 +22,10 @@ description: The pi agent runtime (dotty-pi container), the model matrix, and th
 | PiVoiceLLM outer agent loop | `DOTTY_PI_MODEL` (`dotty-simple`) | sub2api / OpenAI-compatible | Every voice turn; selected by the dotty-pi environment. |
 | pi tool: `think_hard` | `VOICE_THINKER_MODEL` (`dotty-think`) | sub2api / OpenAI-compatible | Multi-step reasoning; direct POST from dotty-pi-ext, no agent overhead. |
 | pi tool: `memory_lookup` | (no LLM call — FTS5) | brain.db inside dotty-pi | `"do you remember…"` queries. |
-| pi tool: `take_photo` | `google/gemini-2.0-flash-001` (`VLM_MODEL`) | dotty-behaviour → OpenRouter | Camera describe. |
+| pi tool: `take_photo` | `google/gemini-3.1-flash-lite` (`VLM_MODEL`) | dotty-behaviour → OpenRouter | Camera describe. |
 | pi tool: `play_song` | (no LLM call) | Firmware via `/xiaozhi/admin/play-asset` | Song request. |
 | Smart-mode display label (`SMART_MODEL`) | `VOICE_THINKER_MODEL` | dashboard only | Displays the configured thinker alias; smart mode does not swap the live PiVoiceLLM model. |
-| Vision narrative (security/scene synthesis) | `VISION_MODEL` (`google/gemini-2.0-flash-001`) | OpenRouter | dotty-behaviour internal — camera frame description. |
+| Vision narrative (security/scene synthesis) | `VISION_MODEL` (`google/gemini-3.1-flash-lite`) | OpenRouter | dotty-behaviour internal — camera frame description. |
 | Audio captioning (security mode) | `AUDIO_CAPTION_MODEL` (`google/gemini-2.5-flash`) | OpenRouter | dotty-behaviour internal — ambient sound description. |
 
 ## The pi agent runtime
@@ -112,7 +112,7 @@ Qwen3 is multilingual. Voice turns should follow the language detected by ASR in
 2. `receiveAudioHandle.py` attaches that tag as a private `RESPONSE_LANGUAGE` marker on every voice reply path.
 3. `custom-providers/textUtils.py` appends a per-turn same-language constraint used by PiVoiceLLM and OpenAICompat.
 
-This controls response text and subtitles. The selected TTS provider still needs a voice that supports the resulting language; the default local Piper voice is English-only and does not auto-route voices.
+This controls response text and subtitles. The default ChatTTS path supports Chinese, English, and mixed text; fixed-language fallback voices still need to match the response language.
 
 ### dotty-simple / dotty-think (PiVoiceLLM path)
 
@@ -126,7 +126,7 @@ Both are placeholders. Set them to real model ids or provider-side aliases in
 
 ### Vision and audio models
 
-- **VLM (`take_photo`, security camera frames):** `google/gemini-2.0-flash-001` (`VLM_MODEL`). Served by dotty-behaviour.
+- **VLM (`take_photo`, security camera frames):** `google/gemini-3.1-flash-lite` (`VLM_MODEL`). Served by dotty-behaviour.
 - **Audio captioning (security mode):** `google/gemini-2.5-flash` (`AUDIO_CAPTION_MODEL`). Served by dotty-behaviour.
 
 ## OpenRouter

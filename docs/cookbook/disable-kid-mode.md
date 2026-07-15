@@ -16,7 +16,10 @@ Set the environment variable (in `.env` or the shell environment):
 DOTTY_KID_MODE=false
 ```
 
-Recreate the stack so every service receives the updated environment:
+This environment value is the startup fallback. If the dashboard has already
+created the shared Kid Mode state file, use its Kid Mode toggle so the change is
+persisted and picked up on the next voice turn. For a fresh deployment, recreate
+the stack so every service receives the updated fallback:
 
 ```bash
 docker compose up -d
@@ -44,8 +47,8 @@ docker compose up -d
 | 2 | Emoji prefix (one of the 9 allowed emojis) |
 | 3 | Default 1-2 short sentences, up to 6 for open-ended asks; TTS-friendly |
 
-The content filter (`_content_filter`) and emoji fallback
-(`_ensure_emoji_prefix`) remain active in both modes.
+The TTS-bound blocked-words filter is disabled with Kid Mode. Emoji-prefix,
+automatic response-language matching, and response-length constraints remain active.
 
 ## See also
 

@@ -111,6 +111,7 @@ class EventTextMessageHandler(TextMessageHandler):
                 new_state = ((msg_json.get("data") or {}).get("state") or "").strip().lower()
                 if new_state:
                     conn.current_state = new_state
+                    conn._dotty_desired_state = new_state
             except Exception:
                 pass
         # Listen on `face_detected`. Prior firmware also emitted
