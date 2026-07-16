@@ -65,6 +65,7 @@ _state: dict[str, Any] = {
     "abort_device": None,
     "subscribe_events": None,
     "unsubscribe_events": None,
+    "reply_events_available": False,
     "perception_state_getter": None,
     "perception_recent_getter": None,
     "identity_display_name": None,
@@ -87,6 +88,7 @@ def configure(*, send_message: Any = None, vision_cache_getter: Any = None,
               inject_to_device: Any = None, abort_device: Any = None,
               subscribe_events: Any = None,
               unsubscribe_events: Any = None,
+              reply_events_available: bool | None = None,
               perception_state_getter: Any = None,
               perception_recent_getter: Any = None,
               identity_display_name: Any = None,
@@ -126,6 +128,8 @@ def configure(*, send_message: Any = None, vision_cache_getter: Any = None,
         _state["subscribe_events"] = subscribe_events
     if unsubscribe_events is not None:
         _state["unsubscribe_events"] = unsubscribe_events
+    if reply_events_available is not None:
+        _state["reply_events_available"] = reply_events_available
     if perception_state_getter is not None:
         _state["perception_state_getter"] = perception_state_getter
     if perception_recent_getter is not None:
@@ -1285,9 +1289,10 @@ async def _inject_or_error(request: Request, text: str, label: str) -> Any:
     """Helper for action endpoints that fire text into xiaozhi-server's
     pipeline so the device actually speaks/emotes/runs MCP tools.
 
-    Q4: subscribes to the bridge's event stream BEFORE injecting, then
-    waits up to ~8s for the next turn so the dashboard can show what Dotty
-    actually said (not just "Sent…")."""
+    When a completed-turn producer is configured, subscribe before injecting
+    and wait up to ~8s so the dashboard can show what Dotty actually said.
+    The current dotty-pi path has no such producer, so report successful
+    dispatch immediately instead of waiting on an unwritten queue."""
     inject = _state.get("inject_to_device")
     if inject is None:
         return templates.TemplateResponse(
@@ -1297,7 +1302,8 @@ async def _inject_or_error(request: Request, text: str, label: str) -> Any:
         )
     subscribe = _state.get("subscribe_events")
     unsubscribe = _state.get("unsubscribe_events")
-    queue = subscribe() if subscribe else None
+    reply_events_available = bool(_state.get("reply_events_available"))
+    queue = subscribe() if reply_events_available and subscribe else None
     try:
         try:
             result = await inject(text=text)
@@ -1312,17 +1318,24 @@ async def _inject_or_error(request: Request, text: str, label: str) -> Any:
                 request, "say_result.html",
                 {"ok": False, "error": result.get("error", "unknown injection failure")},
             )
-        # Wait for the next completed turn (likely ours — single device).
-        response_text = "Sent — no reply in 8s."
+        response_text = "Sent to Dotty."
+        response_label = "Status"
         if queue is not None:
+            response_text = "Sent — no reply in 8s."
             try:
                 event = await asyncio.wait_for(queue.get(), timeout=_INJECT_WAIT_SEC)
                 response_text = event.get("response_text") or "(no text)"
+                response_label = "Dotty replied"
             except asyncio.TimeoutError:
                 pass
         return templates.TemplateResponse(
             request, "say_result.html",
-            {"ok": True, "sent": label, "response": response_text},
+            {
+                "ok": True,
+                "sent": label,
+                "response": response_text,
+                "response_label": response_label,
+            },
         )
     finally:
         if queue is not None and unsubscribe is not None:
@@ -2717,11 +2730,11 @@ async def security_recent(request: Request, device_id: str) -> Any:
 
 @router.get("/events", include_in_schema=False)
 async def events_stream(request: Request) -> StreamingResponse:
-    """Server-Sent Events stream of completed conversation turns.
+    """Server-Sent Events stream for dashboard connectivity and turns.
 
-    Each event is one JSON object: {ts, channel, request_text, response_text,
-    latency_ms, error, emoji_used}. The bridge's ConvoLogger broadcasts on
-    every turn. Heartbeats every 15s keep proxies / browsers awake.
+    When a completed-turn producer is configured, each event is one JSON
+    object. Otherwise the stream still emits heartbeats every 15s so the
+    browser can distinguish a healthy bridge from a dropped connection.
     """
     subscribe = _state.get("subscribe_events")
     unsubscribe = _state.get("unsubscribe_events")

@@ -143,5 +143,58 @@ class SayStartStoryKidFilterTests(unittest.TestCase):
         self.assertIn("story_time", flips)
 
 
+class DashboardInjectFeedbackTests(unittest.TestCase):
+    def setUp(self):
+        self._saved_inject = dash._state.get("inject_to_device")
+
+        async def _inject(*, text, device_id=""):
+            return {"ok": True, "device_id": device_id, "text": text}
+
+        dash._state["inject_to_device"] = _inject
+
+    def tearDown(self):
+        dash._state["inject_to_device"] = self._saved_inject
+
+    def test_success_does_not_wait_on_unwired_reply_stream(self):
+        self.assertIsNotNone(dash._state.get("subscribe_events"))
+        self.assertFalse(dash._state.get("reply_events_available"))
+
+        body = _body(asyncio.run(
+            dash._inject_or_error(_req(), "hello", label="hello")
+        ))
+
+        self.assertIn("Sent to Dotty", body)
+        self.assertNotIn("no reply in 8s", body)
+
+    def test_sse_stream_stays_available_for_browser_heartbeat(self):
+        request = Request({
+            "type": "http",
+            "method": "GET",
+            "path": "/ui/events",
+            "headers": [],
+            "query_string": b"",
+        })
+
+        async def _first_chunk():
+            response = await dash.events_stream(request)
+            chunk = await anext(response.body_iterator)
+            await response.body_iterator.aclose()
+            return response, chunk
+
+        response, chunk = asyncio.run(_first_chunk())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(chunk, b"retry: 5000\n\n")
+
+
+class DashboardInputMarkupTests(unittest.TestCase):
+    def test_talk_and_story_bind_native_input_events(self):
+        template = (
+            _repo_root / "bridge" / "templates" / "dashboard.html"
+        ).read_text()
+
+        self.assertEqual(template.count("hx-on:input="), 2)
+        self.assertNotIn("hx-on::input=", template)
+
+
 if __name__ == "__main__":
     unittest.main()

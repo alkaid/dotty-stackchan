@@ -200,10 +200,7 @@ class TTSProvider(TTSProviderBase):
         text = MarkdownCleaner.clean_markdown(text).translate(_TEXT_TRANSLATION)
         profile = self._profile_for_sentence()
         try:
-            if profile.get("provider") == "edge":
-                self._speak_edge(text, is_last, profile.get("config") or {})
-            else:
-                self._speak_chattts(text, is_last, profile.get("config") or {})
+            self.text_to_speak(text, is_last, profile=profile)
         except Exception as exc:
             logger.bind(tag=TAG).error(
                 f"RoleTTS synth failed provider={profile.get('provider')!r} "
@@ -213,6 +210,13 @@ class TTSProvider(TTSProviderBase):
                 (SentenceType.LAST, [], None, getattr(self, "current_sentence_id", None))
             )
         return None
+
+    def text_to_speak(self, text, is_last, *, profile=None):
+        profile = profile or self._profile_for_sentence()
+        config = profile.get("config") or {}
+        if profile.get("provider") == "edge":
+            return self._speak_edge(text, is_last, config)
+        return self._speak_chattts(text, is_last, config)
 
     def _encode_available_pcm(self, end_of_stream=False):
         frame_bytes = 24000 * 60 // 1000 * 2

@@ -605,9 +605,8 @@ def _identity_display_name(identity: str) -> str | None:
     return None
 
 
-# Stub SSE plumbing — kept so /ui/events still wakes the queue handler
-# (sends heartbeats) when the browser subscribes. No producer is wired in
-# bridge.py post-#111; convo turns are owned by dotty-pi now.
+# The dotty-pi cutover removed completed-turn broadcasts, but the dashboard's
+# EventSource still needs a live heartbeat stream to represent bridge health.
 _dashboard_event_listeners: list[asyncio.Queue] = []
 
 
@@ -759,6 +758,7 @@ if _configure_dashboard is not None:
         abort_device=_dashboard_abort_device,
         subscribe_events=_dashboard_subscribe_events,
         unsubscribe_events=_dashboard_unsubscribe_events,
+        reply_events_available=False,
         perception_state_getter=_dashboard_perception_state_getter,
         perception_recent_getter=_dashboard_perception_recent_getter,
         memory_records_getter=_dashboard_memory_records,
