@@ -122,16 +122,37 @@ test("tool completion is logged without arguments on the live HTTP RPC path", as
   assert.doesNotMatch(lines[0], /secret|value/);
 });
 
-test("health checks do not release an active turn", async () => {
+test("an abort response terminates the active Pi RPC turn", async () => {
+  const rpc = new PiRpc();
+  rpc.send = () => {};
+  const frames = [
+    { type: "response", command: "prompt", id: "turn-1", success: true },
+    { type: "response", command: "abort", id: "abort-2", success: true },
+  ];
+  rpc.nextFrame = async () => frames.shift();
+
+  await rpc.turn("first", () => assert.fail("aborted turn emitted text"));
+  assert.equal(frames.length, 0);
+});
+
+test("a new turn aborts the active turn while health leaves it alone", async () => {
   const started = deferred();
   const release = deferred();
+  let abortCalls = 0;
   const rpc = {
     async health() {},
     async newSession() {},
-    async turn(_message, onText) {
-      started.resolve();
-      await release.promise;
-      onText("done");
+    abort() {
+      abortCalls += 1;
+      release.resolve();
+    },
+    async turn(message, onText) {
+      if (message === "first") {
+        started.resolve();
+        await release.promise;
+        return;
+      }
+      onText(message);
     },
   };
 
@@ -145,19 +166,51 @@ test("health checks do not release an active turn", async () => {
 
     const health = await fetch(`${baseUrl}/health`);
     assert.equal(health.status, 200);
+    assert.equal(abortCalls, 0);
 
     const second = await fetch(`${baseUrl}/turn`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ message: "second" }),
     });
-    assert.equal(second.status, 409);
+    assert.equal(second.status, 200);
+    assert.equal(await second.text(), "second");
+    assert.equal(abortCalls, 1);
+    assert.equal(await (await first).text(), "");
+  });
+});
+
+test("new_session aborts an active turn before resetting", async () => {
+  const started = deferred();
+  const release = deferred();
+  let abortCalls = 0;
+  let resetCalls = 0;
+  const rpc = {
+    async health() {},
+    async newSession() { resetCalls += 1; },
+    abort() {
+      abortCalls += 1;
+      release.resolve();
+    },
+    async turn() {
+      started.resolve();
+      await release.promise;
+    },
+  };
+
+  await withServer(rpc, async (baseUrl) => {
+    const first = fetch(`${baseUrl}/turn`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "first" }),
+    });
+    await started.promise;
 
     const reset = await fetch(`${baseUrl}/new_session`, { method: "POST" });
-    assert.equal(reset.status, 409);
-
-    release.resolve();
-    assert.equal(await (await first).text(), "done");
+    assert.equal(reset.status, 200);
+    assert.equal(abortCalls, 1);
+    assert.equal(resetCalls, 1);
+    assert.equal(await (await first).text(), "");
   });
 });
 

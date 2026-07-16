@@ -196,6 +196,11 @@ export class PiRpc {
     throw new Error("new_session timed out");
   }
 
+  abort() {
+    const id = this.nextIdFor("abort");
+    this.send({ id, type: "abort" });
+  }
+
   async turn(message, onText) {
     const id = this.nextIdFor("turn");
     this.send({ id, type: "prompt", message });
@@ -207,6 +212,9 @@ export class PiRpc {
         if (!frame.success) throw new Error(`pi rejected prompt: ${frame.error ?? "unknown"}`);
         sawAccept = true;
         continue;
+      }
+      if (frame?.type === "response" && frame.command === "abort" && frame.success) {
+        return;
       }
       if (frame?.type === "message_update") {
         const event = frame.assistantMessageEvent;
@@ -243,9 +251,28 @@ async function readJson(req) {
 
 export function createRpcServer(rpc = new PiRpc()) {
   let busy = false;
+  let activeOperation = null;
+  let activeTurn = null;
+
+  async function cancelActiveTurn() {
+    const turn = activeTurn;
+    if (!turn) return;
+    await rpc.abort();
+    try {
+      await turn;
+    } catch {
+      // Aborted turns may reject; either outcome releases the RPC process.
+    }
+    if (activeTurn === turn) activeTurn = null;
+    if (activeOperation === turn) {
+      activeOperation = null;
+      busy = false;
+    }
+  }
 
   return createServer(async (req, res) => {
     let ownsRpc = false;
+    let operation = null;
     try {
       if (req.method === "GET" && req.url === "/health") {
         await rpc.health();
@@ -253,17 +280,21 @@ export function createRpcServer(rpc = new PiRpc()) {
         return;
       }
       if (req.method === "POST" && req.url === "/new_session") {
+        await cancelActiveTurn();
         if (busy) {
           json(res, 409, { error: "rpc operation already in progress" });
           return;
         }
         busy = true;
         ownsRpc = true;
-        await rpc.newSession();
+        operation = rpc.newSession();
+        activeOperation = operation;
+        await operation;
         json(res, 200, { ok: true });
         return;
       }
       if (req.method === "POST" && req.url === "/turn") {
+        await cancelActiveTurn();
         if (busy) {
           json(res, 409, { error: "rpc operation already in progress" });
           return;
@@ -277,7 +308,10 @@ export function createRpcServer(rpc = new PiRpc()) {
           return;
         }
         res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
-        await rpc.turn(message, (delta) => res.write(delta));
+        operation = rpc.turn(message, (delta) => res.write(delta));
+        activeOperation = operation;
+        activeTurn = operation;
+        await operation;
         res.end();
         return;
       }
@@ -289,7 +323,11 @@ export function createRpcServer(rpc = new PiRpc()) {
         res.end();
       }
     } finally {
-      if (ownsRpc) busy = false;
+      if (ownsRpc && activeOperation === operation) {
+        activeOperation = null;
+        if (activeTurn === operation) activeTurn = null;
+        busy = false;
+      }
     }
   });
 }
