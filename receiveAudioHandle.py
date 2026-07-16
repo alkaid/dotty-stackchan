@@ -598,7 +598,9 @@ def _submit_chat(conn: "ConnectionHandler", text: str) -> None:
     )
     if language_instruction:
         prompt = f"{prompt}\n\n{language_instruction}"
-    conn.executor.submit(conn.chat, prompt)
+    turn_generation = getattr(conn, "_dotty_chat_generation", 0) + 1
+    conn._dotty_chat_generation = turn_generation
+    conn.executor.submit(conn.chat, prompt, 0, turn_generation)
 
 
 # ---------- Dance / singing mode ----------

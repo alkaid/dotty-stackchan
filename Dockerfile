@@ -26,6 +26,9 @@ COPY custom-providers/xiaozhi-patches/ota_handler.py /opt/xiaozhi-esp32-server/c
 COPY custom-providers/xiaozhi-patches/portal_bridge.py /opt/xiaozhi-esp32-server/core/portal_bridge.py
 COPY custom-providers/xiaozhi-patches/websocket_server.py /opt/xiaozhi-esp32-server/core/websocket_server.py
 COPY custom-providers/xiaozhi-patches/http_server.py /opt/xiaozhi-esp32-server/core/http_server.py
+COPY custom-providers/xiaozhi-patches/patch_connection_turn_generation.py /tmp/patch_connection_turn_generation.py
+RUN python /tmp/patch_connection_turn_generation.py /opt/xiaozhi-esp32-server/core/connection.py \
+    && rm /tmp/patch_connection_turn_generation.py
 
 COPY personas /opt/xiaozhi-esp32-server/personas
 COPY songs /opt/xiaozhi-esp32-server/config/assets/songs
