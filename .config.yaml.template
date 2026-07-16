@@ -14,6 +14,14 @@ log:
 
 delete_audio: true
 
+# The firmware reports its built-in wake phrase as "Hi,ESP". Xiaozhi strips
+# punctuation before comparing, so the configured form must be "HiESP".
+# Keep the greeting local to the device: an LLM greeting would overlap the
+# real question that follows immediately and make dotty-pi reject it as busy.
+enable_greeting: false
+wakeup_words:
+  - HiESP
+
 selected_module:
   VAD: SileroVAD
   ASR: <ASR_MODULE>       # FunASR default; WhisperLocal / SenseVoiceOnnx opt-in
