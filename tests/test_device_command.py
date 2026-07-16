@@ -219,6 +219,23 @@ class TestHttpServerWiring(unittest.TestCase):
             )
         asyncio.run(go())
 
+    def test_reboot_sends_fixed_system_frame_through_serialized_seam(self):
+        async def go():
+            conn = _FakeConn()
+            conn.headers = {"device-id": "dev-1"}
+            type(self).active["dev-1"] = conn
+            response = await self._server()._dotty_reboot(
+                self._request({"device_id": "dev-1"})
+            )
+            self.assertEqual(response.status, 200)
+            self.assertEqual(len(conn.websocket.sent), 1)
+            self.assertEqual(json.loads(conn.websocket.sent[0]), {
+                "type": "system",
+                "command": "reboot",
+            })
+
+        asyncio.run(go())
+
     def test_resolve_conn_falls_back_to_first_device_and_503s_when_empty(self):
         conn = _FakeConn()
         conn.headers = {"device-id": "dev-a"}

@@ -1,4 +1,5 @@
 import asyncio
+import json
 from aiohttp import web
 from config.logger import setup_logging
 from core.api.ota_handler import OTAHandler
@@ -166,6 +167,28 @@ class SimpleHttpServer:
             return err
         from core.handle.abortHandle import handleAbortMessage
         _spawn(handleAbortMessage(conn), name="inject_abort")
+        return web.json_response({
+            "ok": True,
+            "device_id": _dotty_conn_device_id(conn, device_id),
+        })
+
+    async def _dotty_reboot(self, request: "web.Request") -> "web.Response":
+        """POST /xiaozhi/admin/reboot  Body: {"device_id": "<optional>"}
+
+        Sends the firmware's fixed system reboot command. A normal boot then
+        runs the device's configured OTA check before reconnecting.
+        """
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+        device_id = (data.get("device_id") or "").strip() if isinstance(data, dict) else ""
+        conn, err = _dotty_resolve_conn(device_id)
+        if err is not None:
+            return err
+        await _dotty_device_command.send_serialized(
+            conn, json.dumps({"type": "system", "command": "reboot"}),
+        )
         return web.json_response({
             "ok": True,
             "device_id": _dotty_conn_device_id(conn, device_id),
@@ -746,6 +769,9 @@ class SimpleHttpServer:
                         ),
                         web.post(
                             "/xiaozhi/admin/abort", self._dotty_abort
+                        ),
+                        web.post(
+                            "/xiaozhi/admin/reboot", self._dotty_reboot
                         ),
                         web.post(
                             "/xiaozhi/admin/set-head-angles",
