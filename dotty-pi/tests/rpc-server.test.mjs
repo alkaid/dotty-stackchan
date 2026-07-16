@@ -17,6 +17,22 @@ function deferred() {
   return { promise, resolve };
 }
 
+function frameStream() {
+  const queued = [];
+  const waiters = [];
+  return {
+    next() {
+      if (queued.length) return Promise.resolve(queued.shift());
+      return new Promise((resolve) => waiters.push(resolve));
+    },
+    push(frame) {
+      const resolve = waiters.shift();
+      if (resolve) resolve(frame);
+      else queued.push(frame);
+    },
+  };
+}
+
 async function withServer(rpc, run) {
   const server = createRpcServer(rpc);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -124,15 +140,45 @@ test("tool completion is logged without arguments on the live HTTP RPC path", as
 
 test("an abort response terminates the active Pi RPC turn", async () => {
   const rpc = new PiRpc();
-  rpc.send = () => {};
-  const frames = [
-    { type: "response", command: "prompt", id: "turn-1", success: true },
-    { type: "response", command: "abort", id: "abort-2", success: true },
-  ];
-  rpc.nextFrame = async () => frames.shift();
+  const sent = [];
+  const frames = frameStream();
+  rpc.send = (frame) => sent.push(frame);
+  rpc.nextFrame = () => frames.next();
 
-  await rpc.turn("first", () => assert.fail("aborted turn emitted text"));
-  assert.equal(frames.length, 0);
+  const turn = rpc.turn("first", () => assert.fail("aborted turn emitted text"));
+  frames.push({ type: "response", command: "prompt", id: "turn-1", success: true });
+  rpc.abort();
+  frames.push({ type: "response", command: "abort", id: "abort-2", success: true });
+
+  await turn;
+  assert.deepEqual(sent.map((frame) => frame.type), ["prompt", "abort"]);
+});
+
+test("a late abort response cannot terminate the replacement turn", async () => {
+  const rpc = new PiRpc();
+  const sent = [];
+  const frames = frameStream();
+  rpc.send = (frame) => sent.push(frame);
+  rpc.nextFrame = () => frames.next();
+
+  const first = rpc.turn("first", () => assert.fail("aborted turn emitted text"));
+  frames.push({ type: "response", command: "prompt", id: "turn-1", success: true });
+  rpc.abort();
+  frames.push({ type: "agent_end" });
+  await first;
+
+  const output = [];
+  const replacement = rpc.turn("replacement", (text) => output.push(text));
+  frames.push({ type: "response", command: "abort", id: "abort-2", success: true });
+  frames.push({ type: "response", command: "prompt", id: "turn-3", success: true });
+  frames.push({
+    type: "message_update",
+    assistantMessageEvent: { type: "text_delta", delta: "SECOND_OK" },
+  });
+  frames.push({ type: "agent_end" });
+
+  await replacement;
+  assert.deepEqual(output, ["SECOND_OK"]);
 });
 
 test("a new turn aborts the active turn while health leaves it alone", async () => {

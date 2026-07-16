@@ -89,6 +89,8 @@ export class PiRpc {
     this.waiters = [];
     this.stderr = [];
     this.configFingerprint = null;
+    this.activeTurnId = null;
+    this.abortedTurnIds = new Set();
   }
 
   start() {
@@ -115,6 +117,8 @@ export class PiRpc {
 
     this.queue = [];
     this.stderr = [];
+    this.activeTurnId = null;
+    this.abortedTurnIds.clear();
     this.proc = spawn("pi", args, {
       stdio: ["pipe", "pipe", "pipe"],
       env,
@@ -197,6 +201,7 @@ export class PiRpc {
   }
 
   abort() {
+    if (this.activeTurnId) this.abortedTurnIds.add(this.activeTurnId);
     const id = this.nextIdFor("abort");
     this.send({ id, type: "abort" });
   }
@@ -204,35 +209,42 @@ export class PiRpc {
   async turn(message, onText) {
     const id = this.nextIdFor("turn");
     this.send({ id, type: "prompt", message });
-    let sawAccept = false;
-    const deadline = Date.now() + TURN_TIMEOUT_MS;
-    while (Date.now() < deadline) {
-      const frame = await this.nextFrame(Math.max(1, deadline - Date.now()));
-      if (frame?.type === "response" && frame.command === "prompt" && frame.id === id) {
-        if (!frame.success) throw new Error(`pi rejected prompt: ${frame.error ?? "unknown"}`);
-        sawAccept = true;
-        continue;
-      }
-      if (frame?.type === "response" && frame.command === "abort" && frame.success) {
-        return;
-      }
-      if (frame?.type === "message_update") {
-        const event = frame.assistantMessageEvent;
-        if (event?.type === "text_delta" && event.delta) onText(event.delta);
-        if (event?.type === "toolcall_end") {
-          const toolCall = event.toolCall ?? {};
-          console.log(
-            `dotty-pi tool call name=${toolCall.name ?? "unknown"} id=${toolCall.id ?? "unknown"}`,
-          );
+    this.activeTurnId = id;
+    try {
+      let sawAccept = false;
+      const deadline = Date.now() + TURN_TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        const frame = await this.nextFrame(Math.max(1, deadline - Date.now()));
+        if (frame?.type === "response" && frame.command === "prompt" && frame.id === id) {
+          if (!frame.success) throw new Error(`pi rejected prompt: ${frame.error ?? "unknown"}`);
+          sawAccept = true;
+          continue;
         }
-        continue;
+        if (frame?.type === "response" && frame.command === "abort" && frame.success) {
+          if (this.abortedTurnIds.has(id)) return;
+          continue;
+        }
+        if (frame?.type === "message_update") {
+          const event = frame.assistantMessageEvent;
+          if (event?.type === "text_delta" && event.delta) onText(event.delta);
+          if (event?.type === "toolcall_end") {
+            const toolCall = event.toolCall ?? {};
+            console.log(
+              `dotty-pi tool call name=${toolCall.name ?? "unknown"} id=${toolCall.id ?? "unknown"}`,
+            );
+          }
+          continue;
+        }
+        if (frame?.type === "agent_end") {
+          if (!sawAccept) throw new Error("agent_end before prompt-accept");
+          return;
+        }
       }
-      if (frame?.type === "agent_end") {
-        if (!sawAccept) throw new Error("agent_end before prompt-accept");
-        return;
-      }
+      throw new Error("turn timed out");
+    } finally {
+      if (this.activeTurnId === id) this.activeTurnId = null;
+      this.abortedTurnIds.delete(id);
     }
-    throw new Error("turn timed out");
   }
 }
 
