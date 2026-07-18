@@ -585,10 +585,15 @@ def _role_card_response(
     error: str | None = None,
     refresh: bool = False,
 ) -> Any:
+    active_role = _find_role(state, state["active_role_id"])
     response = templates.TemplateResponse(
         request,
         "role_card.html",
-        {"state": state, "error": error},
+        {
+            "state": state,
+            "error": error,
+            "wake_phrase": f"hi, {active_role['name']}" if active_role else "",
+        },
     )
     if refresh:
         response.headers["HX-Trigger"] = "dotty-refresh"

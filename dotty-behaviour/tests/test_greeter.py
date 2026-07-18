@@ -7,6 +7,7 @@ import json
 import tempfile
 import time
 from pathlib import Path
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from calendar_ import CalendarCache, Event
@@ -118,7 +119,10 @@ people:
                 assert "Brett" in llm_calls[0]
                 assert "SIMPLIFIED CHINESE ONLY" in llm_calls[0]
 
-            await _drive(g, body)
+            with patch("greeter.greeter.active_role_name", return_value="Mochi"):
+                await _drive(g, body)
+
+            assert "You are Mochi" in llm_calls[0]
 
     asyncio.run(go())
 

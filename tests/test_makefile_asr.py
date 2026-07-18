@@ -43,6 +43,7 @@ def _run_setup(
 
     env_lines = [
         "TZ=UTC",
+        "ROBOT_NAME=Mochi",
         "XIAOZHI_WS_PORT=5001",
         "XIAOZHI_HTTP_PORT=5002",
         "DOTTY_ADMIN_TOKEN=0123456789abcdef0123456789abcdef",
@@ -110,6 +111,8 @@ def test_auto_falls_back_to_cpu_without_nvidia_runtime(tmp_path: Path) -> None:
     assert config["ASR"]["FunASR"]["device"] == "cpu"
     assert config["ASR"]["FunASR"]["language"] == "auto"
     assert env["ASR_LANGUAGE"] == "auto"
+    assert config["wakeup_words"] == ["HiESP", "HiMochi"]
+    assert config["prompt"].startswith("You are Mochi,")
 
 
 def test_setup_builds_xiaozhi_base_before_application_images(tmp_path: Path) -> None:

@@ -10,16 +10,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 
 from dispatch import NarrativeLLMClient
 from logs import NdjsonWriter
 from perception import PerceptionState
+from role_identity import active_role_name
 
 log = logging.getLogger("dotty-behaviour.consumers.dance_reflector")
 
 
 DANCE_SYSTEM_PROMPT = (
-    "You are Dotty, a small family robot, reflecting privately on a "
+    "You are {role_name}, a small family robot, reflecting privately on a "
     "dance you just finished. Write 2–3 sentences in first person, "
     "present tense, internal monologue (not spoken). Capture the joy, "
     "the rhythm, the silliness. Keep it under 300 characters."
@@ -33,10 +35,13 @@ class DanceReflector:
         state: PerceptionState,
         narrative: NarrativeLLMClient,
         writer: NdjsonWriter,
+        *,
+        role_name_provider: Callable[[], str] = active_role_name,
     ) -> None:
         self._state = state
         self._narrative = narrative
         self._writer = writer
+        self._role_name = role_name_provider
         self._tasks: set[asyncio.Task] = set()
 
     def _spawn(self, coro, *, name: str | None = None) -> None:
@@ -45,10 +50,11 @@ class DanceReflector:
         t.add_done_callback(self._tasks.discard)
 
     async def _fire(self, device_id: str, dance: str) -> None:
+        role_name = self._role_name()
         user_prompt = DANCE_USER_PROMPT_TEMPLATE.format(dance=dance)
         text = await self._narrative.chat(
             user_prompt,
-            system_prompt=DANCE_SYSTEM_PROMPT,
+            system_prompt=DANCE_SYSTEM_PROMPT.format(role_name=role_name),
             max_tokens=200,
             temperature=0.85,
         )

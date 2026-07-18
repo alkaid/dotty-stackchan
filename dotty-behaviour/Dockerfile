@@ -20,7 +20,7 @@ RUN if [ -n "$PIP_INDEX_URL" ]; then \
     fi
 
 # Flat layout — top-level modules + subpackages, no outer Python package.
-COPY config.py main.py ./
+COPY config.py main.py role_identity.py ./
 COPY perception ./perception
 COPY routes ./routes
 COPY dispatch ./dispatch

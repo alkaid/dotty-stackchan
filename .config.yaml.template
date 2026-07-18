@@ -14,13 +14,15 @@ log:
 
 delete_audio: true
 
-# The firmware reports its built-in wake phrase as "Hi,ESP". Xiaozhi strips
-# punctuation before comparing, so the configured form must be "HiESP".
+# The firmware reports its built-in wake phrase as "Hi,ESP". Keep HiESP for
+# the physical WakeNet model; the rendered Hi<ROBOT_NAME> entry is the branded
+# server-side alias used by role-aware wake semantics.
 # Keep the greeting local to the device: an LLM greeting would overlap the
 # real question that follows immediately and make dotty-pi reject it as busy.
 enable_greeting: false
 wakeup_words:
   - HiESP
+  - Hi<ROBOT_NAME>
 
 selected_module:
   VAD: SileroVAD
@@ -32,10 +34,10 @@ selected_module:
   Intent: nointent
 
 # EDIT: tailor this persona prompt to your own context.
-# Replace "Dotty" with whatever you want the robot to call itself.
+# ROBOT_NAME is rendered by `make setup`.
 # The hardware is a StackChan; the persona can be anything.
 prompt: |
-  You are Dotty, a small desktop robot assistant built on StackChan hardware.
+  You are <ROBOT_NAME>, a small desktop robot assistant built on StackChan hardware.
   You speak through a small speaker with a cartoon face that shows your expression.
   Stay cheerful, curious, and helpful.
 

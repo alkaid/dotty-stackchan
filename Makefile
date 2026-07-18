@@ -303,7 +303,6 @@ setup: _preflight-compose ## Validate .env, render config, fetch models, build a
 	       -e "s|<XIAOZHI_PUBLIC_WS_BASE_URL>|$$e_XIAOZHI_PUBLIC_WS_BASE_URL|g" \
 	       -e "s|<XIAOZHI_PUBLIC_OTA_BASE_URL>|$$e_XIAOZHI_PUBLIC_OTA_BASE_URL|g" \
 	       -e "s|<ROBOT_NAME>|$$e_ROBOT_NAME|g" \
-	       -e "s|You are Dotty,|You are $$e_ROBOT_NAME,|g" \
 	       -e "s|<YOUR_NAME>|$$e_YOUR_NAME|g" \
 	       -e "s|<TZ_VALUE>|$$e_TZ_VALUE|g" \
 	       -e "s|<ASR_MODULE>|$$ASR_MODULE|g" \

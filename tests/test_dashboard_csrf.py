@@ -370,6 +370,12 @@ class DashboardRoleVoiceTests(unittest.TestCase):
         self.assertIn("Default EdgeTTS - Xiaoxiao", body)
         self.assertIn("You are Dotty.", body)
 
+    def test_role_card_shows_robot_name_wake_phrase(self):
+        with patch.dict(os.environ, {"ROBOT_NAME": "Mochi"}):
+            body = self.client.get("/ui/roles").text
+        self.assertIn("Mochi", body)
+        self.assertIn("hi, Mochi", body)
+
 class CSRFSigningUnitTests(unittest.TestCase):
     """Direct tests on the sign/unsign helpers in bridge.csrf."""
 

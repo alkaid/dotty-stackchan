@@ -2,6 +2,8 @@
 
 import importlib.util
 import pathlib
+import json
+import tempfile
 import sys
 import types
 import unittest
@@ -100,6 +102,31 @@ class TestAsrNameCorrections(unittest.TestCase):
     def test_alias_matching_is_word_bounded(self):
         text = "Duddybrook is a place."
         self.assertEqual(_module._apply_asr_corrections(text), text)
+
+    def test_role_wake_phrase_follows_active_role_name(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = pathlib.Path(td) / "roles.json"
+            path.write_text(json.dumps({
+                "active_role_id": "guide",
+                "roles": [{"id": "guide", "name": "Mochi"}],
+            }), encoding="utf-8")
+            self.assertEqual(_module._role_wake_phrase(str(path)), "hi, Mochi")
+
+    def test_role_wake_phrase_tolerates_punctuation(self):
+        original = _module._role_wake_phrase
+        try:
+            _module._role_wake_phrase = lambda: "hi, Mochi"
+            self.assertTrue(_module._is_wake_phrase("Hi Mochi!"))
+        finally:
+            _module._role_wake_phrase = original
+
+    def test_punctuation_only_role_does_not_match_every_utterance(self):
+        original = _module._role_wake_phrase
+        try:
+            _module._role_wake_phrase = lambda: "hi, !!!"
+            self.assertFalse(_module._is_wake_phrase("This is still asleep."))
+        finally:
+            _module._role_wake_phrase = original
 
 
 if __name__ == "__main__":

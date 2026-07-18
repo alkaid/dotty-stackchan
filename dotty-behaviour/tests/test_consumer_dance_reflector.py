@@ -47,6 +47,7 @@ async def _spin(state, narrative, td: Path, body):
         state,
         narrative,
         NdjsonWriter(td, "dances", ZoneInfo("UTC")),
+        role_name_provider=lambda: "Mochi",
     )
     task = asyncio.create_task(consumer.run())
     try:
@@ -88,6 +89,7 @@ def test_dance_ended_writes_reflection() -> None:
                 # Per bridge.py: max_tokens=200, temperature=0.85
                 assert narrative.calls[0]["max_tokens"] == 200
                 assert narrative.calls[0]["temperature"] == 0.85
+                assert "You are Mochi" in narrative.calls[0]["system_prompt"]
 
             await _spin(state, narrative, tdp, body)
 

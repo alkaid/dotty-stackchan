@@ -26,7 +26,30 @@ def roles_path() -> Path:
     return Path(os.environ.get("DOTTY_ROLES_FILE", str(DEFAULT_PATH)))
 
 
-def default_prompt() -> str:
+def configured_robot_name() -> str:
+    name = os.environ.get("ROBOT_NAME", "Dotty").strip()
+    if (
+        not name
+        or len(name) > MAX_NAME_CHARS
+        or any(ord(char) < 32 for char in name)
+    ):
+        return "Dotty"
+    return name
+
+
+def _bind_prompt_name(
+    prompt: str, name: str, *, previous_name: str | None = None,
+) -> str:
+    bound = prompt.replace("{{ROLE_NAME}}", name)
+    if previous_name and previous_name != name:
+        for suffix in (",", "."):
+            old = f"You are {previous_name}{suffix}"
+            if old in bound:
+                return bound.replace(old, f"You are {name}{suffix}", 1)
+    return bound
+
+
+def default_prompt(role_name: str | None = None) -> str:
     fallback = Path(__file__).parent.parent / "personas" / "default.md"
     path = Path(os.environ.get("DOTTY_DEFAULT_ROLE_FILE", str(fallback)))
     try:
@@ -35,17 +58,18 @@ def default_prompt() -> str:
         raise RoleError(f"Default role prompt is unavailable: {path}") from exc
     if not prompt:
         raise RoleError("Default role prompt is empty")
-    return prompt
+    return _bind_prompt_name(prompt, role_name or configured_robot_name())
 
 
 def _initial_state() -> dict[str, Any]:
+    role_name = configured_robot_name()
     return {
         "version": 1,
         "active_role_id": "default",
         "roles": [{
             "id": "default",
-            "name": "Dotty",
-            "prompt": default_prompt(),
+            "name": role_name,
+            "prompt": default_prompt(role_name),
             "voice_id": "default",
         }],
     }
@@ -92,6 +116,20 @@ def _validate_state(raw: Any) -> dict[str, Any]:
     return {"version": 1, "active_role_id": active, "roles": roles}
 
 
+def _apply_legacy_default_name(state: dict[str, Any]) -> dict[str, Any]:
+    configured_name = configured_robot_name()
+    if configured_name == "Dotty":
+        return state
+    for role in state["roles"]:
+        if role["id"] == "default" and role["name"].casefold() == "dotty":
+            role["name"] = configured_name
+            role["prompt"] = _bind_prompt_name(
+                role["prompt"], configured_name, previous_name="Dotty",
+            )
+            break
+    return state
+
+
 def read_roles(path: Path | None = None) -> dict[str, Any]:
     target = path or roles_path()
     try:
@@ -100,7 +138,7 @@ def read_roles(path: Path | None = None) -> dict[str, Any]:
         return _initial_state()
     except (OSError, json.JSONDecodeError) as exc:
         raise RoleError(f"Unable to read role store: {target}") from exc
-    return _validate_state(raw)
+    return _apply_legacy_default_name(_validate_state(raw))
 
 
 def _write_roles(state: dict[str, Any], target: Path) -> None:
@@ -147,6 +185,7 @@ def create_role(
         "prompt": prompt,
         "voice_id": voice_id,
     })
+    role["prompt"] = _bind_prompt_name(role["prompt"], role["name"])
 
     def change(state: dict[str, Any]) -> None:
         if len(state["roles"]) >= MAX_ROLES:
@@ -173,6 +212,10 @@ def update_role(
     def change(state: dict[str, Any]) -> None:
         for index, role in enumerate(state["roles"]):
             if role["id"] == role_id:
+                updated["prompt"] = _bind_prompt_name(
+                    updated["prompt"], updated["name"],
+                    previous_name=role["name"],
+                )
                 state["roles"][index] = updated
                 return
         raise RoleError("Role not found")

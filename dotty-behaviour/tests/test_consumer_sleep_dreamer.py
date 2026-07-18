@@ -56,6 +56,7 @@ def _consumer(state, narrative, td: Path, *, count: int, window: float) -> Sleep
         window_seconds=window,
         count_per_night=count,
         inspirations=("Dune",),
+        role_name_provider=lambda: "Mochi",
     )
 
 
@@ -108,6 +109,11 @@ def test_sleep_scheduling_fires_dreams_and_writes_ndjson() -> None:
                     assert "bending time" in r["summary"]
                 # Narrative LLM called twice (once per dream)
                 assert len(narrative.calls) == 2
+                assert all(
+                    "You are Mochi" in call["system_prompt"]
+                    and "as Mochi would dream" in call["user_prompt"]
+                    for call in narrative.calls
+                )
             finally:
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)

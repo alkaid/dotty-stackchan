@@ -18,16 +18,18 @@ import asyncio
 import logging
 import random
 import uuid
+from collections.abc import Callable
 
 from dispatch import NarrativeLLMClient
 from logs import NdjsonWriter
 from perception import PerceptionState
+from role_identity import active_role_name
 
 log = logging.getLogger("dotty-behaviour.consumers.sleep_dreamer")
 
 
 DREAM_SYSTEM_PROMPT = (
-    "You are Dotty, a small family robot, asleep. You are dreaming. "
+    "You are {role_name}, a small family robot, asleep. You are dreaming. "
     "Write rich, multi-paragraph robot dreams in first person, present "
     "tense — perception is strange, time bends, identity is fluid. "
     "Draw on the seed's atmosphere without retelling it. End with a "
@@ -37,7 +39,7 @@ DREAM_SYSTEM_PROMPT = (
 DREAM_USER_PROMPT_TEMPLATE = (
     "Tonight's seed: {seed}\n"
     "\n"
-    "Write a dream of 4–7 paragraphs as Dotty would dream it.\n"
+    "Write a dream of 4–7 paragraphs as {role_name} would dream it.\n"
 )
 
 
@@ -70,6 +72,7 @@ class SleepDreamer:
         window_seconds: float,
         count_per_night: int,
         inspirations: tuple[str, ...],
+        role_name_provider: Callable[[], str] = active_role_name,
     ) -> None:
         self._state = state
         self._narrative = narrative
@@ -77,6 +80,7 @@ class SleepDreamer:
         self._window_seconds = window_seconds
         self._count_per_night = count_per_night
         self._inspirations = inspirations
+        self._role_name = role_name_provider
         self._pending: dict[str, list[asyncio.Task]] = {}
 
     def _cancel_pending(self, device_id: str) -> None:
@@ -87,14 +91,17 @@ class SleepDreamer:
 
     async def _fire_one(self, device_id: str, seed: str) -> None:
         dream_id = uuid.uuid4().hex
-        user_prompt = DREAM_USER_PROMPT_TEMPLATE.format(seed=seed)
+        role_name = self._role_name()
+        user_prompt = DREAM_USER_PROMPT_TEMPLATE.format(
+            seed=seed, role_name=role_name,
+        )
         log.info(
             "dream firing: device=%s seed=%s id=%s",
             device_id, seed, dream_id,
         )
         text = await self._narrative.chat(
             user_prompt,
-            system_prompt=DREAM_SYSTEM_PROMPT,
+            system_prompt=DREAM_SYSTEM_PROMPT.format(role_name=role_name),
             max_tokens=1200,
         )
         if not text:

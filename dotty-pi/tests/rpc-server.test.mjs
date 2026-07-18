@@ -9,6 +9,7 @@ import {
   createRpcServer,
   loadActiveRole,
   PiRpc,
+  wakePhraseForRole,
 } from "../rpc-server.mjs";
 
 function deferred() {
@@ -91,7 +92,36 @@ test("active role selects the prompt independently of Kid and Smart modes", () =
     const args = buildPiArgs(env);
     assert.equal(
       args[args.indexOf("--system-prompt") + 1],
-      "Guide role",
+      "You are Guide. This active Role name overrides any different "
+        + "assistant name in the remaining instructions.\n\nGuide role",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("legacy default role and wake phrase follow ROBOT_NAME", () => {
+  const dir = mkdtempSync(join(tmpdir(), "dotty-pi-test-"));
+  const rolesPath = join(dir, "roles.json");
+  try {
+    writeFileSync(rolesPath, JSON.stringify({
+      active_role_id: "default",
+      roles: [{
+        id: "default",
+        name: "Dotty",
+        prompt: "You are Dotty, a small robot.",
+        voice_id: "default",
+      }],
+    }));
+    const env = { DOTTY_ROLES_FILE: rolesPath, ROBOT_NAME: "Mochi" };
+    const role = loadActiveRole(env);
+    assert.equal(role.name, "Mochi");
+    assert.equal(role.prompt, "You are Mochi, a small robot.");
+    assert.equal(wakePhraseForRole(role, env), "hi, Mochi");
+    const args = buildPiArgs(env);
+    assert.equal(
+      args[args.indexOf("--system-prompt") + 1],
+      "You are Mochi, a small robot.",
     );
   } finally {
     rmSync(dir, { recursive: true, force: true });

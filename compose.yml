@@ -24,6 +24,8 @@ services:
     environment:
       TZ: ${TZ:-Australia/Brisbane}
       PERSONA: ${PERSONA:-default}
+      ROBOT_NAME: ${ROBOT_NAME:-Dotty}
+      DOTTY_ROLES_FILE: /var/lib/dotty-bridge/state/roles.json
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-void}
       NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
       VISION_BRIDGE_URL: http://dotty-behaviour:8090
@@ -68,6 +70,8 @@ services:
     init: true
     environment:
       DOTTY_PI_RPC_PORT: 8091
+      ROBOT_NAME: ${ROBOT_NAME:-Dotty}
+      DOTTY_ROLES_FILE: /var/lib/dotty-bridge/state/roles.json
       DOTTY_PI_TURN_TIMEOUT_MS: ${DOTTY_PI_TURN_TIMEOUT_MS:-120000}
       DOTTY_PI_EXTRA_FLAGS: ${DOTTY_PI_EXTRA_FLAGS:-}
       DOTTY_PI_SYSTEM_PROMPT_FILE: ${DOTTY_PI_SYSTEM_PROMPT_FILE:-/opt/dotty-pi/personas/default.md}
@@ -121,6 +125,8 @@ services:
       TZ: ${TZ:-Australia/Brisbane}
       DOTTY_BEHAVIOUR_HOST: 0.0.0.0
       DOTTY_BEHAVIOUR_PORT: 8090
+      ROBOT_NAME: ${ROBOT_NAME:-Dotty}
+      DOTTY_ROLES_FILE: /var/lib/dotty-bridge/state/roles.json
       XIAOZHI_ADMIN_BASE_URL: http://xiaozhi-esp32-server:8003
       DOTTY_ADMIN_TOKEN: ${DOTTY_ADMIN_TOKEN:-}
       NARRATIVE_LLM_URL: ${NARRATIVE_LLM_URL:-http://host.docker.internal:8080/v1}
@@ -194,6 +200,8 @@ services:
       PYTHONUNBUFFERED: "1"
       DOTTY_BRIDGE_HOST: 0.0.0.0
       DOTTY_BRIDGE_LOG_LEVEL: ${DOTTY_BRIDGE_LOG_LEVEL:-info}
+      ROBOT_NAME: ${ROBOT_NAME:-Dotty}
+      DOTTY_ROLES_FILE: /var/lib/dotty-bridge/state/roles.json
       XIAOZHI_ADMIN_BASE_URL: http://xiaozhi-esp32-server:8003
       XIAOZHI_INTERNAL_WS_PORT: 8000
       DOTTY_BEHAVIOUR_URL: http://dotty-behaviour:8090

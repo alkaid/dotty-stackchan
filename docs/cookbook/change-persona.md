@@ -30,9 +30,15 @@ container. The assigned voice is resolved again for every spoken sentence.
 
 ## Initialization
 
-When `roles.json` does not exist, the first Role is named `Dotty` and uses
-`personas/default.md` plus the default Xiaoxiao EdgeTTS voice. The Markdown file is only
-an initialization fallback; it does not overwrite saved Roles.
+When `roles.json` does not exist, the first Role is named from `.env`'s
+`ROBOT_NAME` (falling back to `Dotty`) and uses `personas/default.md` plus the
+default Xiaoxiao EdgeTTS voice. The Markdown file is only an initialization
+fallback; it does not overwrite saved Roles. Existing stores whose default
+Role is still named `Dotty` also adopt a non-default `ROBOT_NAME` automatically.
+
+After initialization, the active Role name is authoritative. Pi conversations
+and autonomous mode prompts bind their identity to that name, and Bridge shows
+the derived service-side wake alias as `hi, <Role name>`.
 
 ## Modes
 
@@ -45,3 +51,7 @@ the face. PiVoiceLLM also guarantees a neutral emoji fallback.
 
 Generic providers still use `LLM.OpenAICompat.persona_file` and the top-level
 `prompt:` block in `data/.config.yaml`.
+
+The acoustic wake-word detector is separate from Roles. Shipped firmware still
+recognizes the fixed WakeNet phrase "Hi, ESP"; see [Wake word](../wake-word.md)
+for the model-training requirement behind a truly dynamic spoken wake word.

@@ -10,6 +10,7 @@ Dotty listens passively for a fixed phrase and only opens the conversation pipel
 ## TL;DR
 
 - **Today:** firmware ships with `SR_WN_WN9_HIESP` — phrase **"Hi, ESP"** — running on ESP-SR's WakeNet9 + AFE on the ESP32-S3 (PSRAM model). `SR_WN_WN9_HISTACKCHAN_TTS3` ("Hi, Stack Chan") was the earlier default and is kept available as an opt-in alternative.
+- **Role alias:** Bridge derives `hi, <active Role name>` (the initial name comes from `.env`'s `ROBOT_NAME`) for server-side state-wake matching and display. This does **not** retrain or rename the physical WakeNet model.
 - **Five-minute alternate (Path A):** flip `sdkconfig.defaults` to one of the other prebuilts — e.g. `SR_WN_WN9_COMPUTER_TTS=y` ("Computer") or `SR_WN_WN9_HISTACKCHAN_TTS3=y` ("Hi, Stack Chan"). Reflash. No code change needed — the handler is wake-phrase-agnostic.
 - **Branded "Hey Dotty" (Path B, recommended long-term):** train a microWakeWord (TFLite) model on ~50–100 positive samples + ~1,000 negatives, quantise INT8, ship as a wake-word partition. Firmware integration hook is documented in `firmware/main/stackchan/wake_word/microwakeword_setup.md` in the firmware repo.
 - **Path C (custom WakeNet9):** Espressif's first-party trainer. Smaller binary, more friction. Not recommended unless Path B blocks.
@@ -25,6 +26,21 @@ Mic PCM ──▶ AFE (AEC + NS + VAD) ──▶ WakeNet9 ──▶ "wake event"
 - AFE = Audio Front End. Does acoustic-echo-cancel, noise-suppress, voice-activity-detect on the dual-mic input before the wake-net sees it. Mandatory on the S3 + PSRAM build.
 - The wake-net `models_` list is populated at boot from a SPIFFS partition labelled `model`. `AfeWakeWord::Initialize` walks the list and picks the first entry whose name starts with `ESP_WN_PREFIX` ("wn"). That string is set by `idf.py menuconfig` → ESP Speech Recognition → Load Multiple Wake Words.
 - Wake event flow: `AfeWakeWord::AudioDetectionTask` → `wake_word_detected_callback_` (set in `audio_service.cc`) → `Application::HandleWakeWordDetectedEvent` (`xiaozhi-esp32/main/application.cc:793`) → `ContinueWakeWordInvoke` → opens WebSocket and switches to listening state.
+
+### Role-name alias versus acoustic wake word
+
+The services share the active Bridge Role and derive `hi, <Role name>` from it.
+That phrase is used when the server already has text to classify (for example,
+state-wake semantics in an open session), and the Bridge Role card displays it.
+The generated server configuration also retains `HiESP` alongside the rendered
+`Hi<ROBOT_NAME>` alias.
+
+The microphone's always-on detector runs locally in firmware before a session
+exists. It recognizes only the model compiled into the firmware, currently
+`wn9_hiesp` ("Hi, ESP"). Changing a Role name or `ROBOT_NAME` therefore cannot
+make the sleeping physical device recognize the new name. A genuinely dynamic
+acoustic wake word requires trained models and firmware model selection, as
+described in Path B below.
 
 ## File map (firmware repo)
 

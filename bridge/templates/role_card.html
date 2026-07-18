@@ -18,6 +18,9 @@
             {% endfor %}
           </select>
         </form>
+        {% if wake_phrase %}
+        <div class="text-xs text-base-content/60 mt-1 font-mono">{{ wake_phrase }}</div>
+        {% endif %}
         {% else %}
         <div class="text-xs text-error mt-1">{{ error }}</div>
         {% endif %}

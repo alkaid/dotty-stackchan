@@ -42,6 +42,9 @@ _KID_MODE_STATE_FILE = os.environ.get(
 _SMART_MODE_STATE_FILE = os.environ.get(
     "DOTTY_SMART_MODE_STATE", "/var/lib/dotty-bridge/state/smart-mode",
 )
+_ROLES_FILE = os.environ.get(
+    "DOTTY_ROLES_FILE", "/var/lib/dotty-bridge/state/roles.json",
+)
 
 
 def _read_kid_mode_state() -> bool:
@@ -247,6 +250,37 @@ _WAKE_PHRASES = ("wake up", "come back", "are you there")
 _NON_CONVERSATIONAL_STATES = ("sleep", "security", "story_time")
 
 
+def _configured_robot_name() -> str:
+    return os.environ.get("ROBOT_NAME", "Dotty").strip() or "Dotty"
+
+
+def _active_role_name(roles_path: str | None = None) -> str:
+    configured_name = _configured_robot_name()
+    try:
+        with open(roles_path or _ROLES_FILE, "r", encoding="utf-8") as handle:
+            state = json.load(handle)
+        role = next(
+            item for item in state["roles"]
+            if item["id"] == state["active_role_id"]
+        )
+        name = str(role.get("name") or "").strip()
+        if role.get("id") == "default" and name.casefold() == "dotty":
+            return configured_name
+        if name:
+            return name
+    except (OSError, ValueError, KeyError, TypeError, StopIteration):
+        pass
+    return configured_name
+
+
+def _role_wake_phrase(roles_path: str | None = None) -> str:
+    return f"hi, {_active_role_name(roles_path)}"
+
+
+def _compact_phrase(text: str) -> str:
+    return re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", text.casefold())
+
+
 def _detect_state_phrase(text: str) -> tuple[str, str] | None:
     lower = text.lower().strip()
     for phrase, state, ack in _STATE_TRIGGER_PHRASES:
@@ -257,7 +291,17 @@ def _detect_state_phrase(text: str) -> tuple[str, str] | None:
 
 def _is_wake_phrase(text: str) -> bool:
     lower = text.lower().strip()
-    return any(phrase in lower for phrase in _WAKE_PHRASES)
+    rendered_role_phrase = _role_wake_phrase()
+    _prefix, separator, role_name = rendered_role_phrase.partition(",")
+    role_phrase = (
+        _compact_phrase(rendered_role_phrase)
+        if separator and _compact_phrase(role_name)
+        else ""
+    )
+    return (
+        any(phrase in lower for phrase in _WAKE_PHRASES)
+        or bool(role_phrase) and role_phrase in _compact_phrase(text)
+    )
 
 
 _HELP_PHRASES = (

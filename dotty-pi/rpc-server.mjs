@@ -18,6 +18,35 @@ const DOTTY_EXTENSION_PATH =
 const THINKING_LEVELS = new Set([
   "off", "minimal", "low", "medium", "high", "xhigh",
 ]);
+const ROLE_NAME_TOKEN = "{{ROLE_NAME}}";
+
+function configuredRobotName(env = process.env) {
+  const name = String(env.ROBOT_NAME ?? "Dotty").trim();
+  return name && name.length <= 80 ? name : "Dotty";
+}
+
+function bindRoleIdentity(role, env = process.env) {
+  const configuredName = configuredRobotName(env);
+  const storedName = typeof role.name === "string" ? role.name.trim() : "";
+  const name = role.id === "default" && storedName.toLowerCase() === "dotty"
+    ? configuredName
+    : (storedName || configuredName);
+  let prompt = String(role.prompt ?? "").trim().replaceAll(ROLE_NAME_TOKEN, name);
+  if (name !== storedName && storedName) {
+    for (const suffix of [",", "."]) {
+      const old = `You are ${storedName}${suffix}`;
+      if (prompt.includes(old)) {
+        prompt = prompt.replace(old, `You are ${name}${suffix}`);
+        break;
+      }
+    }
+  }
+  return { ...role, name, prompt };
+}
+
+export function wakePhraseForRole(role, env = process.env) {
+  return `hi, ${bindRoleIdentity(role, env).name}`;
+}
 
 function boolEnv(env, name, fallback) {
   const value = (env[name] ?? String(fallback)).trim().toLowerCase();
@@ -33,7 +62,7 @@ export function loadActiveRole(env = process.env) {
       (candidate) => candidate.id === state.active_role_id,
     );
     if (role && typeof role.prompt === "string" && role.prompt.trim()) {
-      return role;
+      return bindRoleIdentity(role, env);
     }
   } catch {
     // A missing store is the expected state before the first Bridge edit.
@@ -42,11 +71,27 @@ export function loadActiveRole(env = process.env) {
     ?? "/opt/dotty-pi/personas/default.md";
   const prompt = readFileSync(promptPath, "utf8").trim();
   if (!prompt) throw new Error("default role prompt is empty");
-  return { id: "default", name: "Dotty", prompt, voice_id: "default" };
+  return bindRoleIdentity({
+    id: "default",
+    name: configuredRobotName(env),
+    prompt,
+    voice_id: "default",
+  }, env);
 }
 
 export function resolveSystemPrompt(env = effectiveRuntimeEnv()) {
-  return loadActiveRole(env).prompt.trim();
+  const role = loadActiveRole(env);
+  const prompt = role.prompt.trim();
+  if (
+    prompt.startsWith(`You are ${role.name},`)
+    || prompt.startsWith(`You are ${role.name}.`)
+  ) {
+    return prompt;
+  }
+  return (
+    `You are ${role.name}. This active Role name overrides any different `
+    + `assistant name in the remaining instructions.\n\n${prompt}`
+  );
 }
 
 function simpleThinkingLevel(env) {

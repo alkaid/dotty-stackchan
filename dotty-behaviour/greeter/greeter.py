@@ -34,6 +34,7 @@ from zoneinfo import ZoneInfo
 
 from household import PersonResolver
 from perception import PerceptionEvent, PerceptionState
+from role_identity import active_role_name
 
 log = logging.getLogger("dotty-behaviour.greeter")
 
@@ -321,7 +322,8 @@ class ProactiveGreeter:
                     )
 
         return (
-            f"You are Dotty, a friendly home robot. {addressee} just "
+            f"You are {active_role_name()}, a friendly home robot. "
+            f"{addressee} just "
             f"walked into the room. The time of day is {window}.\n"
             f"{persona_line}"
             f"{birthday_line}"
