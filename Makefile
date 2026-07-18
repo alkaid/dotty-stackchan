@@ -540,9 +540,28 @@ verify-firmware: ## Build firmware in IDF container and compute SHA256 checksums
 	  espressif/idf:v5.5.4 \
 	  bash -lc 'git config --global --add safe.directory "*" && python fetch_repos.py'
 	@echo -e "$(BOLD)Building firmware...$(RESET)"
-	docker run --rm -v "$(PWD)/firmware/firmware:/project" -w /project \
-	  espressif/idf:v5.5.4 \
-	  bash -lc 'git config --global --add safe.directory "*" && idf.py build'
+	@set -eu; \
+	 ota_base_url="$${XIAOZHI_PUBLIC_OTA_BASE_URL:-}"; \
+	 if [ -z "$$ota_base_url" ] && [ -f .env ]; then \
+	   ota_base_url="$$(awk -F= '$$1 == "XIAOZHI_PUBLIC_OTA_BASE_URL" { sub(/^[^=]*=/, ""); value=$$0 } END { print value }' .env | \
+	     sed -e 's/\r$$//' -e 's/^"//' -e 's/"$$//' -e "s/^'//" -e "s/'$$//")"; \
+	 fi; \
+	 ota_base_url="$${ota_base_url%/}"; \
+	 if [ -z "$$ota_base_url" ]; then \
+	   echo -e "$(RED)Error: XIAOZHI_PUBLIC_OTA_BASE_URL is required for firmware builds.$(RESET)"; \
+	   echo "Set it in .env or export it before running make."; \
+	   exit 1; \
+	 fi; \
+	 echo "Embedding Dotty OTA origin: $$ota_base_url"; \
+	 docker run --rm \
+	   -e XIAOZHI_PUBLIC_OTA_BASE_URL="$$ota_base_url" \
+	   -v "$(PWD)/firmware/firmware:/project" -w /project \
+	   espressif/idf:v5.5.4 \
+	   bash -lc 'git config --global --add safe.directory "*" && idf.py reconfigure && idf.py build'; \
+	 python3 scripts/verify_firmware_artifact.py \
+	   --binary firmware/firmware/build/stack-chan.bin \
+	   --project-description firmware/firmware/build/project_description.json \
+	   --expected-ota-url "$$ota_base_url/xiaozhi/ota/"
 	# IDF runs as root in the container. Return generated artifacts to the host
 	# user so checksum generation, OTA publishing, and cleanup remain writable.
 	docker run --rm \
