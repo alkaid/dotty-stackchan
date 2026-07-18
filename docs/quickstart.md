@@ -20,14 +20,14 @@ alternative configurations.
 ### Server hardware
 
 The default voice pipeline uses [FunASR](https://github.com/modelscope/FunASR)
-SenseVoiceSmall for ASR and bilingual
-[ChatTTS](https://github.com/2noise/ChatTTS) for local Chinese/English TTS.
+SenseVoiceSmall for ASR and the Xiaoxiao EdgeTTS Mandarin voice. Bilingual
+[ChatTTS](https://github.com/2noise/ChatTTS) remains available for local TTS.
 `make setup` uses CUDA when the NVIDIA Container Toolkit is available and
 otherwise falls back to CPU.
 
 | Scenario | Needs a GPU? | Notes |
 |----------|--------------|-------|
-| **Default** (FunASR ASR + ChatTTS + a **cloud** LLM via OpenRouter/OpenAI-compatible key) | Recommended, not required | Any 64-bit Linux host with Docker and ~6 GB free RAM; CUDA uses about 1.2 GB VRAM for ChatTTS. |
+| **Default** (FunASR ASR + RoleTTS + a **cloud** LLM via OpenRouter/OpenAI-compatible key) | Recommended, not required | Any 64-bit Linux host with Docker and ~6 GB free RAM; CUDA uses about 1.2 GB VRAM when ChatTTS profiles are used. |
 | `WhisperLocal` ASR instead of FunASR | Yes | `faster-whisper` float16 needs CUDA. Set the ASR and NVIDIA runtime variables shown in [deployment.md](deployment.md#asr-配置). |
 | **Self-hosting the LLM** locally (Ollama / llama-swap instead of a cloud key) | Recommended | VRAM scales with the model — roughly ~5 GB for an 8B model, ~18 GB for a 30B. See [run-fully-local.md](cookbook/run-fully-local.md) and [llama-swap-concurrent-models.md](cookbook/llama-swap-concurrent-models.md). CPU-only inference works but is slow. |
 
@@ -258,12 +258,14 @@ curl http://<DEPLOY_HOST>:8081/health
 ```
 
 ### Changing voice
-The default `RoleTTS` provider uses a ChatTTS seed and can switch per Role to a
-saved EdgeTTS voice. Manage, preview, and assign voices from the Bridge Voice
-and Role cards. Piper remains a manual offline fallback.
+The default `RoleTTS` profile uses `zh-CN-XiaoxiaoNeural` and can switch each
+Role to another saved EdgeTTS or ChatTTS voice. Manage, preview, and assign
+voices from the Bridge Voice and Role cards. Piper remains a manual offline
+fallback.
 
-ChatTTS code is AGPLv3+ and its official weights are CC BY-NC 4.0. The default
-is intended for this project's personal, non-commercial deployment.
+ChatTTS code is AGPLv3+ and its official weights are CC BY-NC 4.0. Use of that
+optional local provider is intended for this project's personal,
+non-commercial deployment.
 
 ### Changing persona (the robot's personality)
 Open **Roles** in the Bridge dashboard to add, edit, delete, or activate a Role

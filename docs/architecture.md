@@ -10,7 +10,7 @@ description: Single-host architecture and message flow for the self-hosted voice
 - Two hosts: **robot** (StackChan on your desk) and a **single Docker host** (`<DEPLOY_HOST>`) that runs all four server-side services.
 - Audio goes robot → xiaozhi-server → (text) → dotty-pi → (response text) → xiaozhi-server → (audio) → robot. The Docker host never sends audio to the robot — xiaozhi-server handles that.
 - The default voice provider is **`PiVoiceLLM`**, selected via `selected_module.LLM` in `.config.yaml`. One documented alternate exists (`OpenAICompat`) — see [llm-backends.md](./llm-backends.md).
-- Everything is LAN-local except configured cloud model calls. The default model route uses a sub2api-compatible endpoint; the optional Ollama profile keeps the normal and `think_hard` routes local. EdgeTTS is cloud when selected; Piper is fully local.
+- Everything is LAN-local except configured cloud model calls. The default model route uses a sub2api-compatible endpoint; the optional Ollama profile keeps the normal and `think_hard` routes local. The default EdgeTTS voice is cloud; ChatTTS and Piper are local alternatives.
 - The robot speaks the **Xiaozhi WebSocket protocol** (see [protocols.md](./protocols.md)). It has no knowledge of the services running on the Docker host.
 
 > **Cutover note (2026-05-19, issue #36):** The stack previously ran on three hosts — a separate ZeroClaw host (Raspberry Pi) ran the ZeroClaw Rust agent + a FastAPI bridge under systemd. That host has been retired. The brain is now the `dotty-pi` container; the voice provider is `PiVoiceLLM`. See [cutover-behaviour.md](./cutover-behaviour.md) for the historical runbook.
@@ -29,7 +29,7 @@ flowchart LR
             VAD["SileroVAD"]
             ASR["FunASR SenseVoiceSmall<br/>/ WhisperLocal"]
             PV["PiVoiceLLM<br/>(default LLM provider)"]
-            TTS["TTS<br/>(ChatTTS default,<br/>Piper / EdgeTTS fallback)"]
+            TTS["RoleTTS<br/>(EdgeTTS default,<br/>ChatTTS option)"]
         end
         PI["dotty-pi<br/>(pi agent container)"]
         BH["dotty-behaviour<br/>FastAPI :8090"]
@@ -92,7 +92,7 @@ sequenceDiagram
     PI-->>PV: JSONL text chunks (TTS-bound only)
     PV-->>XZ: streamed text
     XZ->>XZ: strip leading emoji → emotion frame
-    XZ->>XZ: TTS (Piper / EdgeTTS) → Opus frames
+    XZ->>XZ: RoleTTS (EdgeTTS / ChatTTS) → Opus frames
     XZ-->>SC: audio + emotion
     SC-->>User: speaks + face animation
 ```

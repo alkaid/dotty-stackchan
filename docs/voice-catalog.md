@@ -44,8 +44,8 @@ needed.
 | `en_GB-alba-medium`              | en_GB  | medium  | Scottish, cosy      | Both          | ~63 MB |
 | `en_GB-semaine-medium`           | en_GB  | medium  | Neutral UK          | Adult         | ~63 MB |
 
-The default TTS is bilingual ChatTTS. The Piper fallback voice that ships with
-`make fetch-models` is
+ChatTTS remains the bilingual local option. The Piper fallback voice that ships
+with `make fetch-models` is
 `en_GB-cori-medium` — a safe, friendly starting point.
 
 ### Notes on quality tiers
@@ -64,6 +64,10 @@ in the `voice:` field under `TTS.EdgeTTS` (or `TTS.StreamingEdgeTTS`).
 
 | Slug                       | Lang   | Character             | Best for      |
 |----------------------------|--------|-----------------------|---------------|
+| `zh-CN-XiaoxiaoNeural`     | zh-CN  | Warm, natural female  | Default       |
+| `zh-CN-XiaoyiNeural`       | zh-CN  | Lively female         | Kid + Adult   |
+| `zh-CN-YunxiNeural`        | zh-CN  | Friendly male         | Kid + Adult   |
+| `zh-CN-YunjianNeural`      | zh-CN  | Energetic male        | Adult         |
 | `en-AU-NatashaNeural`      | en-AU  | Warm, friendly AU     | Kid + Adult   |
 | `en-AU-WilliamNeural`      | en-AU  | Calm, neutral AU      | Adult         |
 | `en-GB-SoniaNeural`        | en-GB  | Warm, professional UK | Both          |
@@ -75,7 +79,7 @@ To list every available voice yourself:
 
 ```bash
 pip install edge-tts
-edge-tts --list-voices | grep en-
+edge-tts --list-voices
 ```
 
 ## Install helper
@@ -113,4 +117,4 @@ TTS:
 
 Then `docker compose restart xiaozhi-esp32-server`.
 
-Last verified: 2026-05-17.
+Last verified: 2026-07-16.

@@ -129,11 +129,11 @@ TTS:
     output_dir: tmp/
   EdgeTTS:
     type: edge
-    voice: en-AU-WilliamNeural
+    voice: zh-CN-XiaoxiaoNeural
     output_dir: tmp/
   StreamingEdgeTTS:
     type: edge_stream
-    voice: en-AU-WilliamNeural
+    voice: zh-CN-XiaoxiaoNeural
     output_dir: tmp/
   LocalPiper:
     type: piper_local

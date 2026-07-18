@@ -21,11 +21,11 @@ class VoiceStoreTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def test_missing_store_has_default_chattts_voice(self) -> None:
+    def test_missing_store_has_default_edge_voice(self) -> None:
         voice = read_voices(self.path)["voices"][0]
         self.assertEqual(voice["id"], "default")
-        self.assertEqual(voice["provider"], "chattts")
-        self.assertEqual(voice["config"]["seed"], 42)
+        self.assertEqual(voice["provider"], "edge")
+        self.assertEqual(voice["config"]["voice"], "zh-CN-XiaoxiaoNeural")
 
     def test_chattts_and_edge_crud(self) -> None:
         state = create_voice(

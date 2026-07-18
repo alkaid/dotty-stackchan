@@ -9,15 +9,13 @@ from typing import Any
 
 DEFAULT_PROFILE: dict[str, Any] = {
     "id": "default",
-    "name": "Default ChatTTS",
-    "provider": "chattts",
+    "name": "Default EdgeTTS - Xiaoxiao",
+    "provider": "edge",
     "config": {
-        "seed": 42,
-        "temperature": 0.3,
-        "top_p": 0.7,
-        "top_k": 20,
-        "refine_prompt": "[oral_2][laugh_0][break_4]",
-        "code_prompt": "[speed_5]",
+        "voice": "zh-CN-XiaoxiaoNeural",
+        "rate": "+0%",
+        "volume": "+0%",
+        "pitch": "+0Hz",
     },
 }
 

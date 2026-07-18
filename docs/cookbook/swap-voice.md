@@ -29,19 +29,21 @@ ChatTTS handles Chinese, English, and mixed text locally. Profiles expose:
 - `temperature`, `top_p`, and `top_k` sampling;
 - ChatTTS `refine_prompt` and `code_prompt` controls.
 
-The initialization profile uses seed `42` and the repository's existing
-sampling values.
+ChatTTS remains available for offline bilingual synthesis. New installations
+instead initialize with the EdgeTTS profile described below.
 
 ## EdgeTTS
 
 EdgeTTS uses Microsoft's cloud Read Aloud service. Profiles expose:
 
-- the named voice, such as `en-AU-NatashaNeural`;
+- the named voice, such as `zh-CN-XiaoxiaoNeural`;
 - rate and volume percentages;
 - pitch in Hz.
 
 Edge voices are language-specific and require internet access. The Bridge form
 includes a small curated list but also accepts another valid Edge voice name.
+The initialized default is `zh-CN-XiaoxiaoNeural`, a warm Mandarin female
+voice, with neutral rate, volume, and pitch settings.
 
 ## Runtime behavior
 

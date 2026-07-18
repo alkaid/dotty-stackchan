@@ -31,7 +31,7 @@ container. The assigned voice is resolved again for every spoken sentence.
 ## Initialization
 
 When `roles.json` does not exist, the first Role is named `Dotty` and uses
-`personas/default.md` plus the default ChatTTS voice. The Markdown file is only
+`personas/default.md` plus the default Xiaoxiao EdgeTTS voice. The Markdown file is only
 an initialization fallback; it does not overwrite saved Roles.
 
 ## Modes

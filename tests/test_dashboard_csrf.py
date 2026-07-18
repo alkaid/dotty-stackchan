@@ -354,9 +354,18 @@ class DashboardRoleVoiceTests(unittest.TestCase):
             "en-AU-NatashaNeural",
         )
 
+    def test_new_voice_editor_defaults_to_xiaoxiao_edge(self):
+        response = self.client.get("/ui/voices/editor?new=true")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            '<option value="edge" selected>EdgeTTS</option>', response.text,
+        )
+        self.assertIn('value="zh-CN-XiaoxiaoNeural"', response.text)
+        self.assertIn("你好，我是 Dotty。", response.text)
+
     def test_role_manager_lists_default_voice(self):
         body = self.client.get("/ui/roles/manage").text
-        self.assertIn("Default ChatTTS", body)
+        self.assertIn("Default EdgeTTS - Xiaoxiao", body)
         self.assertIn("You are Dotty.", body)
 
 class CSRFSigningUnitTests(unittest.TestCase):

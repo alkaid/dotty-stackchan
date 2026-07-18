@@ -31,7 +31,7 @@ See [llm-backends.md](./llm-backends.md) for the full comparison. Any model that
 Almost, and it can be with two swaps:
 
 - **ASR** (speech recognition): already fully local. FunASR runs on your server.
-- **TTS** (speech synthesis): local with the default ChatTTS voice or Piper. EdgeTTS requires internet (it hits Microsoft's servers).
+- **TTS** (speech synthesis): the default Xiaoxiao EdgeTTS voice requires internet (it hits Microsoft's servers). Switch a Role to ChatTTS or select Piper for local synthesis.
 - **LLM**: local when `dotty-pi` targets a local llama-swap/Ollama endpoint. Cloud is used only when you configure a cloud backend or cloud-backed tools.
 
 With Piper TTS and the default local model, nothing leaves your LAN. The trade-off is that local LLMs need a GPU or beefy CPU to run at conversational speed.

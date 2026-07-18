@@ -32,7 +32,7 @@ source-of-truth for re-verification.
 | FunASR project | https://github.com/modelscope/FunASR | Toolkit that hosts SenseVoice. |
 | Silero VAD | https://github.com/snakers4/silero-vad | VAD tunables, version history, limitations. |
 | Piper TTS (engine) | https://github.com/rhasspy/piper | Local neural TTS. |
-| ChatTTS | https://github.com/2noise/ChatTTS | Default local bilingual Chinese/English TTS. Code AGPLv3+; official weights CC BY-NC 4.0. |
+| ChatTTS | https://github.com/2noise/ChatTTS | Optional local bilingual Chinese/English TTS. Code AGPLv3+; official weights CC BY-NC 4.0. |
 | rhasspy/piper-voices | https://huggingface.co/rhasspy/piper-voices | Voice catalog (includes `en_GB-cori-medium`). Repo license MIT; individual voices carry their own. |
 | rany2/edge-tts | https://github.com/rany2/edge-tts | Unofficial EdgeTTS library — the technique we use, not the official path. |
 

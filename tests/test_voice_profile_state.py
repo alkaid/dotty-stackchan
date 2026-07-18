@@ -39,7 +39,8 @@ class VoiceProfileStateTests(unittest.TestCase):
     def test_missing_or_invalid_state_uses_default(self) -> None:
         voice = profile_state.load_active_voice("/missing/roles", "/missing/voices")
         self.assertEqual(voice["id"], "default")
-        self.assertEqual(voice["config"]["seed"], 42)
+        self.assertEqual(voice["provider"], "edge")
+        self.assertEqual(voice["config"]["voice"], "zh-CN-XiaoxiaoNeural")
 
 
 if __name__ == "__main__":

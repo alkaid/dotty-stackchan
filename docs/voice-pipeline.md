@@ -8,7 +8,7 @@ description: xiaozhi-esp32-server pipeline stages -- VAD, ASR, LLM proxy, and TT
 ## TL;DR
 
 - **Server** is `xinnan-tech/xiaozhi-esp32-server` running in Docker on a Linux host. Plugin-based: each of VAD, ASR, LLM, TTS, Memory, Intent is a swappable provider picked via `data/.config.yaml`'s `selected_module:` block.
-- Our live pipeline: **SileroVAD** (speech-end) → **FunASR SenseVoiceSmall** (`auto` language, CUDA when available), opt-in **SenseVoiceOnnx** (int8, no PyTorch), or manual **WhisperLocal** → **PiVoiceLLM** custom provider (current default; HTTP RPC to the `dotty-pi` container) or **OpenAICompat** → bilingual **ChatTTS** (CUDA when available; Piper and EdgeTTS fallbacks).
+- Our live pipeline: **SileroVAD** (speech-end) → **FunASR SenseVoiceSmall** (`auto` language, CUDA when available), opt-in **SenseVoiceOnnx** (int8, no PyTorch), or manual **WhisperLocal** → **PiVoiceLLM** custom provider (current default; HTTP RPC to the `dotty-pi` container) or **OpenAICompat** → **RoleTTS** (Xiaoxiao EdgeTTS by default, with saved ChatTTS profiles; Piper is a manual fallback).
 - The xiaozhi container also runs a perception relay (`EventTextMessageHandler`) that forwards firmware `face_detected` / `face_lost` / `sound_event` / `state_changed` frames to `dotty-behaviour`'s `/api/perception/event`.
 - **Emotion** is not a pipeline stage — it's extracted post-hoc from the LLM's emoji prefix and emitted as a separate WS frame. See [protocols.md](./protocols.md#emotion-protocol).
 - Custom providers are copied into the image by the root Dockerfile at `/opt/xiaozhi-esp32-server/core/providers/{asr,tts,llm}/…`.
@@ -31,7 +31,7 @@ From the `xinnan-tech/xiaozhi-esp32-server` README (see [references.md](./refere
 | **Intent** | intent_llm, function_call, nointent |
 | **Knowledge base** | RagFlow |
 
-**What we use:** SileroVAD + FunASR (patched) + custom PiVoiceLLM + ChatTTS (Piper or EdgeTTS on rollback). Every other row is unused.
+**What we use:** SileroVAD + FunASR (patched) + custom PiVoiceLLM + RoleTTS (EdgeTTS default or ChatTTS profiles; Piper on rollback). Every other row is unused.
 
 ## Our deployed stages
 
@@ -97,6 +97,9 @@ Custom provider at `custom-providers/openai_compat/openai_compat.py`. Talks dire
 sentence and dispatches to local ChatTTS or cloud EdgeTTS. Voice profiles and
 Role assignments are managed and previewed in Bridge without restarting.
 
+- The initialized default is the warm Mandarin female voice
+  `zh-CN-XiaoxiaoNeural`, with neutral rate, volume, and pitch.
+
 - One model handles Chinese, English, and mixed-language sentences without a
   language selector. It outputs 24 kHz PCM, which the provider incrementally
   converts into the device protocol's 60 ms Opus frames.
@@ -118,9 +121,9 @@ Role assignments are managed and previewed in Bridge without restarting.
 - Runs fully offline — no external HTTP calls.
 - **License note (unverified).** Piper voices are MIT-licensed as a repo, but individual voices carry their own upstream license depending on training data. Verify the Cori-specific voice license before redistributing your robot's recordings beyond personal use. Starting point: [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices).
 
-**RoleTTS option: EdgeTTS.**
+**RoleTTS default: EdgeTTS.**
 - Uses Microsoft's unofficial Edge "Read aloud" endpoint (reverse-engineered; no official API key).
-- Voice: `en-US-AnaNeural` (our previous child-sounding voice).
+- Voice: `zh-CN-XiaoxiaoNeural` (warm Mandarin female).
 - Streaming supported; non-streaming is the default that ships with the upstream image.
 - **Known failure mode**: returns silent audio when the input text is not in the voice's language. This is the symptom we chased for the Qwen-Chinese-leak bug — an `en-US-*` voice with Chinese text = empty buffer, not an error.
 - **Risk**: MS can rate-limit, change endpoints, or kill the product. Keep an eye on [rany2/edge-tts](https://github.com/rany2/edge-tts) for ecosystem signals.

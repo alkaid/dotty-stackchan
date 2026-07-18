@@ -112,7 +112,7 @@ Qwen3 is multilingual. Voice turns should follow the language detected by ASR in
 2. `receiveAudioHandle.py` attaches that tag as a private `RESPONSE_LANGUAGE` marker on every voice reply path.
 3. `custom-providers/textUtils.py` appends a per-turn same-language constraint used by PiVoiceLLM and OpenAICompat.
 
-This controls response text and subtitles. The default ChatTTS path supports Chinese, English, and mixed text; fixed-language fallback voices still need to match the response language.
+This controls response text and subtitles. The default Xiaoxiao EdgeTTS voice targets Mandarin; switch the Role to ChatTTS when bilingual Chinese, English, and mixed text synthesis is required.
 
 ### dotty-simple / dotty-think (PiVoiceLLM path)
 

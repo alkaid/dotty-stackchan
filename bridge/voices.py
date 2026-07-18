@@ -13,6 +13,7 @@ from typing import Any, Callable
 
 
 DEFAULT_PATH = Path("/var/lib/dotty-bridge/state/voices.json")
+DEFAULT_EDGE_VOICE = "zh-CN-XiaoxiaoNeural"
 MAX_VOICES = 32
 MAX_NAME_CHARS = 80
 _LOCK = threading.Lock()
@@ -32,15 +33,13 @@ def voices_path() -> Path:
 def default_voice() -> dict[str, Any]:
     return {
         "id": "default",
-        "name": "Default ChatTTS",
-        "provider": "chattts",
+        "name": "Default EdgeTTS - Xiaoxiao",
+        "provider": "edge",
         "config": {
-            "seed": 42,
-            "temperature": 0.3,
-            "top_p": 0.7,
-            "top_k": 20,
-            "refine_prompt": "[oral_2][laugh_0][break_4]",
-            "code_prompt": "[speed_5]",
+            "voice": DEFAULT_EDGE_VOICE,
+            "rate": "+0%",
+            "volume": "+0%",
+            "pitch": "+0Hz",
         },
     }
 
@@ -86,7 +85,7 @@ def _clean_config(provider: str, raw: Any) -> dict[str, Any]:
             ),
         }
     if provider == "edge":
-        voice = _short_text(raw.get("voice", "en-AU-WilliamNeural"), "Edge voice", 100)
+        voice = _short_text(raw.get("voice", DEFAULT_EDGE_VOICE), "Edge voice", 100)
         rate = _short_text(raw.get("rate", "+0%"), "Rate", 8)
         volume = _short_text(raw.get("volume", "+0%"), "Volume", 8)
         pitch = _short_text(raw.get("pitch", "+0Hz"), "Pitch", 10)

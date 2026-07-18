@@ -288,7 +288,7 @@ class TTSProvider(TTSProviderBase):
     async def _edge_pcm(self, text, config):
         communicate = edge_tts.Communicate(
             text,
-            voice=str(config.get("voice", "en-AU-WilliamNeural")),
+            voice=str(config.get("voice", "zh-CN-XiaoxiaoNeural")),
             rate=str(config.get("rate", "+0%")),
             volume=str(config.get("volume", "+0%")),
             pitch=str(config.get("pitch", "+0Hz")),

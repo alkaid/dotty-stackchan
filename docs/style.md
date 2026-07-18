@@ -62,7 +62,7 @@ Always use fenced blocks with a language tag:
 ```yaml
 TTS:
   EdgeTTS:
-    voice: en-AU-WilliamNeural
+    voice: zh-CN-XiaoxiaoNeural
 ```
 ````
 

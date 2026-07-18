@@ -38,6 +38,7 @@ from bridge.roles import (
     update_role,
 )
 from bridge.voices import (
+    DEFAULT_EDGE_VOICE,
     VoiceError,
     clean_voice,
     create_voice,
@@ -933,7 +934,7 @@ async def voice_save(
     top_k: str = Form("20"),
     refine_prompt: str = Form("[oral_2][laugh_0][break_4]"),
     code_prompt: str = Form("[speed_5]"),
-    edge_voice: str = Form("en-AU-WilliamNeural"),
+    edge_voice: str = Form(DEFAULT_EDGE_VOICE),
     edge_rate: str = Form("+0%"),
     edge_volume: str = Form("+0%"),
     edge_pitch: str = Form("+0Hz"),
@@ -1000,7 +1001,7 @@ async def voice_preview(
     top_k: str = Form("20"),
     refine_prompt: str = Form("[oral_2][laugh_0][break_4]"),
     code_prompt: str = Form("[speed_5]"),
-    edge_voice: str = Form("en-AU-WilliamNeural"),
+    edge_voice: str = Form(DEFAULT_EDGE_VOICE),
     edge_rate: str = Form("+0%"),
     edge_volume: str = Form("+0%"),
     edge_pitch: str = Form("+0Hz"),

@@ -1,7 +1,7 @@
 {% if error and not state %}
 <div class="text-sm text-error">{{ error }}</div>
 {% else %}
-{% set provider = selected.provider if selected else "chattts" %}
+{% set provider = selected.provider if selected else "edge" %}
 {% set config = selected.config if selected else {} %}
 <div data-voice-editor>
   <form id="voice-profile-form" hx-post="/ui/actions/voices/save"
@@ -62,19 +62,19 @@
       <label class="form-control sm:col-span-3">
         <span class="label-text mb-1">Edge voice</span>
         <input type="text" name="edge_voice" class="input input-bordered font-mono"
-               value="{{ config.voice|default('en-AU-WilliamNeural') }}"
+               value="{{ config.voice|default('zh-CN-XiaoxiaoNeural') }}"
                list="edge-voice-options" maxlength="100" required>
         <datalist id="edge-voice-options">
+          <option value="zh-CN-XiaoxiaoNeural" label="Xiaoxiao - warm female (default)"></option>
+          <option value="zh-CN-XiaoyiNeural" label="Xiaoyi - lively female"></option>
+          <option value="zh-CN-YunxiNeural" label="Yunxi - friendly male"></option>
+          <option value="zh-CN-YunjianNeural" label="Yunjian - energetic male"></option>
           <option value="en-AU-NatashaNeural"></option>
           <option value="en-AU-WilliamNeural"></option>
           <option value="en-GB-MaisieNeural"></option>
           <option value="en-GB-SoniaNeural"></option>
           <option value="en-US-AriaNeural"></option>
           <option value="en-US-JennyNeural"></option>
-          <option value="zh-CN-XiaoxiaoNeural"></option>
-          <option value="zh-CN-XiaoyiNeural"></option>
-          <option value="zh-CN-YunjianNeural"></option>
-          <option value="zh-CN-YunxiNeural"></option>
           <option value="zh-HK-HiuMaanNeural"></option>
         </datalist>
       </label>
@@ -98,7 +98,7 @@
     <label class="form-control w-full border-t border-base-300 pt-3 mt-1">
       <span class="label-text mb-1">Preview text</span>
       <textarea name="preview_text" class="textarea textarea-bordered w-full"
-                rows="3" maxlength="500" required>Hello! This is how I sound with this voice.</textarea>
+                rows="3" maxlength="500" required>你好，我是 Dotty。很高兴见到你，今天想聊些什么？</textarea>
     </label>
     <div id="voice-preview-result" class="empty:hidden"></div>
 

@@ -13,7 +13,7 @@ Symptom-first lookup table covering common and obscure failure modes. Pair with 
 
 **Symptom:** The robot appears to process the utterance (logs show ASR text and an LLM response), but no audio plays back. The TTS stage produces zero-length or near-zero-length audio.
 
-**Cause:** Language mismatch between the TTS voice and the response text. The response language follows ASR, but a fixed-language fallback voice cannot synthesize every language. The default ChatTTS path is bilingual; LocalPiper and individual EdgeTTS voices are language-specific.
+**Cause:** Language mismatch between the TTS voice and the response text. The response language follows ASR, but a fixed-language voice cannot synthesize every language. The default Xiaoxiao EdgeTTS voice targets Mandarin; ChatTTS is bilingual, while LocalPiper and other EdgeTTS voices are language-specific.
 
 **Fix:**
 1. Check the xiaozhi-server logs for the ASR language tag and LLM response text.
