@@ -10,6 +10,7 @@ Mirrors bridge.py's `_perception_sound_turner` including:
   * skip if a chat happened within QUIET_AFTER_CHAT_SEC
     (the user's own continuing speech shouldn't yank Dotty around)
   * per-device cooldown
+  * rejects saturated/non-finite balance values from unhealthy channels
   * direction left/centre/center/right → ±YAW_DEG / 0
   * re-broadcasts a synthetic `head_turn` event for the dashboard
 """
@@ -18,11 +19,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 
 from dispatch import XiaozhiAdminClient
 from perception import PerceptionEvent, PerceptionState
 
 log = logging.getLogger("dotty-behaviour.consumers.sound_turner")
+
+_MAX_HEALTHY_BALANCE = 0.95
 
 
 class SoundTurner:
@@ -43,6 +47,35 @@ class SoundTurner:
         self._speed = speed
         self._quiet_after_chat_sec = quiet_after_chat_sec
         self._tasks: set[asyncio.Task] = set()
+        self._unhealthy_balance_devices: set[str] = set()
+
+    def _has_healthy_balance(self, device_id: str, data: dict) -> bool:
+        if "balance" not in data:
+            return True
+
+        raw_balance = data["balance"]
+        try:
+            balance = float(raw_balance)
+        except (TypeError, ValueError):
+            balance = math.nan
+
+        healthy = (
+            math.isfinite(balance)
+            and abs(balance) <= _MAX_HEALTHY_BALANCE
+        )
+        if healthy:
+            self._unhealthy_balance_devices.discard(device_id)
+            return True
+
+        if device_id not in self._unhealthy_balance_devices:
+            log.warning(
+                "unhealthy sound balance; suppressing head turns: "
+                "device=%s balance=%r",
+                device_id,
+                raw_balance,
+            )
+            self._unhealthy_balance_devices.add(device_id)
+        return False
 
     def _spawn(self, coro, *, name: str | None = None) -> None:
         t = asyncio.create_task(coro, name=name)
@@ -66,8 +99,14 @@ class SoundTurner:
                 device_id = event.device_id
                 if not device_id or device_id == "unknown":
                     continue
-                direction = (event.data or {}).get("direction", "")
+                data = event.data or {}
+                direction = data.get("direction", "")
                 if direction not in ("left", "centre", "center", "right"):
+                    continue
+                # CoreS3 currently exposes mic + AEC reference as two input
+                # channels. A saturated "balance" is a channel fault, not a
+                # trustworthy left/right direction.
+                if not self._has_healthy_balance(device_id, data):
                     continue
 
                 now = event.ts
@@ -106,7 +145,7 @@ class SoundTurner:
                     "speed": self._speed,
                     "reason": "sound_localizer",
                     "direction": direction,
-                    "energy": (event.data or {}).get("energy"),
+                    "energy": data.get("energy"),
                 }
                 self._state.update_state(
                     device_id, "head_turn", head_turn_data, now

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 
 from consumers import SoundTurner
@@ -47,6 +48,92 @@ def test_left_sound_turns_negative_yaw() -> None:
             assert len(xiaozhi.set_head_angles_calls) == 1
             assert xiaozhi.set_head_angles_calls[0]["yaw"] == -45
             assert xiaozhi.set_head_angles_calls[0]["speed"] == 250
+
+        await _spin(state, xiaozhi, body)
+
+    asyncio.run(go())
+
+
+def test_plausible_left_balance_turns_negative_yaw() -> None:
+    async def go() -> None:
+        state = PerceptionState()
+        xiaozhi = FakeXiaozhi()
+
+        async def body() -> None:
+            state.broadcast(
+                PerceptionEvent(
+                    device_id="dev-1",
+                    name="sound_event",
+                    data={"direction": "left", "balance": 0.6},
+                    ts=time.time(),
+                )
+            )
+            await let_consumer_settle()
+            assert xiaozhi.set_head_angles_calls[0]["yaw"] == -45
+
+        await _spin(state, xiaozhi, body)
+
+    asyncio.run(go())
+
+
+def test_saturated_balance_does_not_turn_head(caplog) -> None:
+    async def go() -> None:
+        state = PerceptionState()
+        xiaozhi = FakeXiaozhi()
+
+        async def body() -> None:
+            for offset in (0.0, 4.0):
+                state.broadcast(
+                    PerceptionEvent(
+                        device_id="dev-1",
+                        name="sound_event",
+                        data={"direction": "left", "balance": 0.998},
+                        ts=time.time() + offset,
+                    )
+                )
+                await let_consumer_settle()
+
+            assert xiaozhi.set_head_angles_calls == []
+
+        await _spin(state, xiaozhi, body)
+
+    with caplog.at_level(
+        logging.WARNING,
+        logger="dotty-behaviour.consumers.sound_turner",
+    ):
+        asyncio.run(go())
+
+    health_warnings = [
+        record
+        for record in caplog.records
+        if "unhealthy sound balance" in record.getMessage()
+    ]
+    assert len(health_warnings) == 1
+
+
+def test_invalid_balance_does_not_turn_head() -> None:
+    async def go() -> None:
+        state = PerceptionState()
+        xiaozhi = FakeXiaozhi()
+
+        async def body() -> None:
+            for balance in (
+                float("nan"),
+                float("inf"),
+                float("-inf"),
+                "not-a-number",
+            ):
+                state.broadcast(
+                    PerceptionEvent(
+                        device_id="dev-1",
+                        name="sound_event",
+                        data={"direction": "left", "balance": balance},
+                        ts=time.time(),
+                    )
+                )
+                await let_consumer_settle()
+
+            assert xiaozhi.set_head_angles_calls == []
 
         await _spin(state, xiaozhi, body)
 
