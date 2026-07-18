@@ -35,7 +35,9 @@ RESET  := \033[0m
 DL_FILE = dl_file() { if curl -fL --retry 3 --retry-delay 1 --progress-bar -o "$$2" "$$1"; then _sz=$$(wc -c < "$$2" 2>/dev/null || echo 0); if [ "$$_sz" -lt 100 ]; then echo -e "  $(RED)$$2: only $$_sz bytes — treating as a failed download$(RESET)"; rm -f "$$2"; return 1; fi; else echo -e "  $(RED)Failed to download $$1$(RESET)"; rm -f "$$2"; return 1; fi; }
 
 # ── Targets ──────────────────────────────────────────────────────────
-.PHONY: help setup xiaozhi-base fetch-models doctor up simulator simulator-only down logs status latency-report voice-list voice-install sbom verify-firmware test test-node lint check _preflight-compose _preflight-rendered
+.PHONY: help setup xiaozhi-base fetch-models doctor up simulator simulator-only down logs status latency-report voice-list voice-install sbom verify-firmware firmware-ota test test-node lint check _preflight-compose _preflight-rendered
+
+FIRMWARE_OTA_MODEL ?= m5stack-stack-chan
 
 # ─────────────────────────────────────────────────────────────────────
 # _preflight-compose — fail fast if Docker Compose v2 plugin is missing
@@ -541,6 +543,13 @@ verify-firmware: ## Build firmware in IDF container and compute SHA256 checksums
 	docker run --rm -v "$(PWD)/firmware/firmware:/project" -w /project \
 	  espressif/idf:v5.5.4 \
 	  bash -lc 'git config --global --add safe.directory "*" && idf.py build'
+	# IDF runs as root in the container. Return generated artifacts to the host
+	# user so checksum generation, OTA publishing, and cleanup remain writable.
+	docker run --rm \
+	  -e HOST_UID="$$(id -u)" -e HOST_GID="$$(id -g)" \
+	  -v "$(PWD)/firmware/firmware:/project" -w /project \
+	  espressif/idf:v5.5.4 \
+	  bash -lc 'chown -R "$$HOST_UID:$$HOST_GID" /project/build'
 	@echo -e "$(BOLD)Computing checksums...$(RESET)"
 	@sha256sum \
 	  firmware/firmware/build/stack-chan.bin \
@@ -565,6 +574,21 @@ verify-firmware: ## Build firmware in IDF container and compute SHA256 checksums
 	  echo "  save it as firmware/firmware/build/SHA256SUMS.published, and re-run."; \
 	fi
 	@echo ""
+
+# Bump PROJECT_VER before compiling so both ESP-IDF app metadata and the
+# on-device version label match the OTA filename. Only publish stack-chan.bin:
+# bootloader, partition-table, and generated-assets updates require USB flash.
+firmware-ota: ## Bump patch version, build firmware, and publish it for OTA
+	@set -eu; \
+	 version=$$(python3 scripts/bump_firmware_version.py $(if $(VERSION),--version "$(VERSION)",)); \
+	 echo "Firmware version bumped to $$version"; \
+	 $(MAKE) --no-print-directory verify-firmware; \
+	 ota_dir="data/bin"; \
+	 artifact="$$ota_dir/$(FIRMWARE_OTA_MODEL)_$$version.bin"; \
+	 mkdir -p "$$ota_dir"; \
+	 install -m 0644 firmware/firmware/build/stack-chan.bin "$$artifact"; \
+	 echo "Published OTA firmware: $$artifact"; \
+	 sha256sum "$$artifact"
 
 status: _preflight-compose _preflight-rendered ## Show container status + bridge / dotty-behaviour health
 	@docker compose ps
