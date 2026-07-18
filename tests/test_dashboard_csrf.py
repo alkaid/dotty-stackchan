@@ -227,6 +227,7 @@ class DashboardConfigurationTests(unittest.TestCase):
             "DOTTY_PI_THINK_REASONING_EFFORT": "high",
             "XIAOZHI_PUBLIC_WS_BASE_URL": "wss://voice.example.test:8443",
             "XIAOZHI_PUBLIC_OTA_BASE_URL": "https://ota.example.test",
+            "IDLE_PHOTOGRAPHER_ENABLED": "true",
         }
 
     def test_dashboard_has_configuration_control(self):
@@ -362,6 +363,7 @@ class DashboardRoleVoiceTests(unittest.TestCase):
         )
         self.assertIn('value="zh-CN-XiaoxiaoNeural"', response.text)
         self.assertIn("你好，我是 Dotty。", response.text)
+        self.assertIn('name="gain_db"', response.text)
 
     def test_role_manager_lists_default_voice(self):
         body = self.client.get("/ui/roles/manage").text

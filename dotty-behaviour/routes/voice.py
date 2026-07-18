@@ -26,7 +26,7 @@ def get_perception_state(request: Request) -> PerceptionState:
 
 
 TAKE_PHOTO_FRESHNESS_SEC = 30.0
-TAKE_PHOTO_FALLBACK = "(I can't see anything fresh right now)"
+TAKE_PHOTO_FALLBACK = "（现在没有可用的新画面）"
 TAKE_PHOTO_MAX_CHARS = 300
 
 

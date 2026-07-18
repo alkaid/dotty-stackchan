@@ -169,7 +169,8 @@ def _fake_runtime(cuda=True):
 
 def test_pcm16_bytes_clips_and_sanitizes():
     pcm = PROVIDER._pcm16_bytes(
-        np.array([[np.nan, -2.0, -0.5, 0.5, 2.0]], dtype=np.float32)
+        np.array([[np.nan, -2.0, -0.5, 0.5, 2.0]], dtype=np.float32),
+        gain_db=0.0,
     )
     assert np.frombuffer(pcm, dtype=np.int16).tolist() == [
         0,

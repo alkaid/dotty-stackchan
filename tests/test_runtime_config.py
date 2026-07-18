@@ -21,6 +21,7 @@ class RuntimeConfigTests(unittest.TestCase):
             {
                 "DOTTY_PI_MODEL": "model-a",
                 "DOTTY_PI_SIMPLE_REASONING": "true",
+                "IDLE_PHOTOGRAPHER_ENABLED": "false",
                 "DOTTY_ADMIN_TOKEN": "must-not-be-written",
             },
             self.path,
@@ -28,6 +29,7 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertEqual(read_overrides(self.path), {
             "DOTTY_PI_MODEL": "model-a",
             "DOTTY_PI_SIMPLE_REASONING": "true",
+            "IDLE_PHOTOGRAPHER_ENABLED": "false",
         })
         self.assertNotIn(
             "DOTTY_ADMIN_TOKEN", self.path.read_text(encoding="utf-8"),

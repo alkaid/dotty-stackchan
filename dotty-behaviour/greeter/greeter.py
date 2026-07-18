@@ -177,7 +177,7 @@ class ProactiveGreeter:
             if not self._take_slot(identity, event_ts=event.ts):
                 return
             text = self._sandwich(
-                "Hello! I don't think we've met.", window=time_of_day,
+                "你好！我们好像还没见过。", window=time_of_day,
             )
             await self._safe_push(
                 device_id, text, t0=t0,
@@ -280,9 +280,9 @@ class ProactiveGreeter:
         try:
             text = await self._llm(prompt)
             cleaned = self._post_process(text or "")
-            if cleaned:
+            if cleaned and any("\u4e00" <= ch <= "\u9fff" for ch in cleaned):
                 return cleaned
-            log.info("greeter: LLM returned empty; template fallback")
+            log.info("greeter: LLM returned empty/non-Chinese text; template fallback")
         except Exception:
             log.warning(
                 "greeter: LLM call failed; template fallback",
@@ -331,8 +331,9 @@ class ProactiveGreeter:
             f"{addressee}. If a calendar item is highly relevant to the "
             f"current time-of-day window, you may mention it naturally — "
             f"otherwise just greet them. "
-            f"Hard rules: ENGLISH ONLY. {max_words} words or fewer. "
-            f"One sentence. No emoji, no Markdown, no lists."
+            f"Hard rules: SIMPLIFIED CHINESE ONLY; do not include English. "
+            f"Use {max_words} Chinese characters or fewer. One sentence. "
+            f"No emoji, no Markdown, no lists."
         )
 
     def _lookup_person(self, identity: str) -> Any:
@@ -350,7 +351,13 @@ class ProactiveGreeter:
     def _template_fallback(self, *, identity: str, window: str) -> str:
         person = self._lookup_person(identity)
         addressee = person.display_name if person else identity
-        return f"Good {window}, {addressee}!"
+        greeting = {
+            "morning": "早上好",
+            "afternoon": "下午好",
+            "evening": "晚上好",
+            "night": "你好",
+        }.get(window, "你好")
+        return f"{greeting}，{addressee}！"
 
     def _sandwich(self, text: str, *, window: str) -> str:  # noqa: ARG002
 

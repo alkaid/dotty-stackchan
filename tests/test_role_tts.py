@@ -100,6 +100,17 @@ def test_provider_implements_tts_base_contract():
     assert not inspect.isabstract(provider_module.TTSProvider)
 
 
+def test_pcm_gain_boosts_quiet_chattts_and_limits_peaks():
+    provider_module = _load_provider_module()
+    quiet = provider_module._pcm16_bytes([0.25], gain_db=6.0)
+    peak = provider_module._pcm16_bytes([0.9], gain_db=6.0)
+
+    import numpy as np
+
+    assert 16000 < np.frombuffer(quiet, dtype=np.int16)[0] < 16500
+    assert np.frombuffer(peak, dtype=np.int16)[0] == 32767
+
+
 def test_text_to_speak_routes_to_profile_provider():
     provider_module = _load_provider_module()
     provider = object.__new__(provider_module.TTSProvider)

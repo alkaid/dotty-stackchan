@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { runTakePhoto } from "../src/tools/take_photo.ts";
 
-const FALLBACK = "(I can't see anything fresh right now)";
+const FALLBACK = "（现在没有可用的新画面）";
 
 interface FakeFetchInit {
   status?: number;

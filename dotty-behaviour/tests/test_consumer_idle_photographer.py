@@ -62,6 +62,30 @@ def test_skips_when_not_idle() -> None:
     asyncio.run(go())
 
 
+def test_runtime_switch_skips_capture() -> None:
+    async def go() -> None:
+        with tempfile.TemporaryDirectory() as td:
+            state = PerceptionState()
+            state.state["dev-1"] = {"current_state": "idle"}
+            state.vision_cache["dev-1"] = {"wall_ts": 0.0}
+            xiaozhi = FakeXiaozhi()
+            consumer = IdlePhotographer(
+                state, xiaozhi,
+                NdjsonWriter(Path(td), "perception", _UTC),
+                sleep_min_sec=0.01,
+                sleep_max_sec=0.02,
+                result_wait_sec=0.01,
+                notable_jaccard=0.7,
+                question="用中文描述。",
+                enabled=lambda: False,
+            )
+
+            await consumer._one_cycle()
+            assert xiaozhi.take_photo_calls == []
+
+    asyncio.run(go())
+
+
 def test_skips_when_face_present() -> None:
     async def go() -> None:
         with tempfile.TemporaryDirectory() as td:

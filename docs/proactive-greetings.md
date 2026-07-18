@@ -14,11 +14,11 @@ path.
 
 A greeting fires for every recognised face subject to **cooldown** and
 **per-day cap** only — there is no time-of-day gate. The current hour
-is still used to phrase the greeting ("Good morning, Brett!" vs "Good
-evening, …") but never to decide whether to speak.
+is still used to phrase the Chinese greeting, but never to decide
+whether to speak.
 
 This is the first server-initiated speech path in the project. Earlier
-layers were strictly reactive (face detected → "Hi!"). Layer 6 turns
+layers were strictly reactive (face detected → "你好！"). Layer 6 turns
 the same trigger into a context-aware utterance that can mention
 today's library trip without the user asking first.
 
@@ -42,7 +42,7 @@ sequenceDiagram
     PG->>CAL: summarize_for_prompt(events, person="Hudson")
     CAL-->>PG: ["09:00 [Hudson] Library day"]
     PG->>LLM: short greeting prompt
-    LLM-->>PG: "Morning, Hudson! Library day today."
+    LLM-->>PG: "早上好 Hudson，今天去图书馆吗？"
     PG->>TTS: push_greeting_audio(device_id, text)
     TTS->>FW: spoken audio
 ```
@@ -66,7 +66,7 @@ while this one targets `face_recognized` (Layer 4 output).
    and per-day cap (default 1) — no time-of-day gating.
 5. **Layer 5 — calendar context.** Person-filtered events for today
    via `summarize_for_prompt(events, person=name, include_household=True)`.
-6. **LLM.** ≤15-word warm spoken greeting.
+6. **LLM.** Short, one-sentence Simplified Chinese greeting.
 7. **Kid-safety sandwich.** Same surface as voice turns; the
    greeting is also constrained directly in the prompt.
 8. **TTS push.** `push_greeting_audio()` → existing `inject-text`
@@ -78,11 +78,11 @@ while this one targets `face_recognized` (Layer 4 output).
 |---|---|---|
 | `GREETER_ENABLED` | `true` | Master kill switch. |
 | `GREETER_USE_FACE_DETECTED` | `false` | Subscribe to `face_detected` as a fallback while Layer 4 isn't wired. Treats every detection as identity=`unknown`. |
-| `GREETER_GREET_UNKNOWN` | `false` | When true, greet unrecognised faces with a generic "Hello! I don't think we've met." |
+| `GREETER_GREET_UNKNOWN` | `false` | When true, greet unrecognised faces with a generic Chinese introduction. |
 | `GREETER_COOLDOWN_HOURS` | `4` | Minimum hours between greetings for the same identity. |
 | `GREETER_PER_DAY_MAX` | `3` | Hard cap on greetings per identity per day. The 4h cooldown already prevents back-to-back firings, so this is a safety ceiling rather than a politeness lever — turn it down if 3 greetings/day feels noisy. |
 | `GREETER_STATE_PATH` | `/var/lib/dotty-behaviour/state/greeter_state.json` | Persistent greet log so a restart doesn't re-greet everyone. |
-| `GREETER_GREETING_MAX_WORDS` | `15` | Word cap fed to the LLM prompt; the model is also told "one sentence". |
+| `GREETER_GREETING_MAX_WORDS` | `15` | Short-length cap fed to the LLM prompt; the model is also told to use one Simplified Chinese sentence. |
 
 State file format (atomic write, JSON):
 
@@ -106,7 +106,7 @@ failure must **never** break the voice path or the perception bus.
 
 | Failure | Behaviour |
 |---|---|
-| LLM unreachable / raises | Falls back to `"Good {window}, {name}!"` template. |
+| LLM unreachable, empty, or non-Chinese | Falls back to a Chinese time-of-day greeting template. |
 | Calendar lookup raises | Continues without calendar context. |
 | TTS push raises | Logged; no retry; next event will try again. |
 | State file corrupt | Discarded, in-memory state starts empty. |

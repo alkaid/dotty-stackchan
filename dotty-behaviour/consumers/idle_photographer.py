@@ -24,6 +24,7 @@ import asyncio
 import logging
 import random
 import time
+from collections.abc import Callable
 
 from dispatch import XiaozhiAdminClient
 from logs import NdjsonWriter
@@ -44,6 +45,7 @@ class IdlePhotographer:
         result_wait_sec: float,
         notable_jaccard: float,
         question: str,
+        enabled: Callable[[], bool] = lambda: True,
     ) -> None:
         self._state = state
         self._xiaozhi = xiaozhi
@@ -53,13 +55,15 @@ class IdlePhotographer:
         self._result_wait_sec = result_wait_sec
         self._notable_jaccard = notable_jaccard
         self._question = question
+        self._enabled = enabled
 
     async def run(self) -> None:
         log.info(
             "idle photographer started "
-            "(sleep=%.0f–%.0fs jaccard=%.2f wait=%.0fs)",
+            "(sleep=%.0f–%.0fs jaccard=%.2f wait=%.0fs enabled=%s)",
             self._sleep_min_sec, self._sleep_max_sec,
             self._notable_jaccard, self._result_wait_sec,
+            self._enabled(),
         )
         try:
             while True:
@@ -75,6 +79,8 @@ class IdlePhotographer:
             log.exception("idle photographer crashed")
 
     async def _one_cycle(self) -> None:
+        if not self._enabled():
+            return
         device_id = self._state.pick_idle_device()
         if not device_id:
             return

@@ -47,7 +47,7 @@ async function behaviourFetch(
 export async function fetchTakePhoto(
   opts: BehaviourOptions = {},
 ): Promise<string> {
-  const fallback = "(I can't see anything fresh right now)";
+  const fallback = "（现在没有可用的新画面）";
   try {
     const resp = await behaviourFetch(
       "/api/voice/take_photo",

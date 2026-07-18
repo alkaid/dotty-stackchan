@@ -242,7 +242,7 @@ The xiaozhi-server's `EventTextMessageHandler` (`custom-providers/xiaozhi-patche
 
 | Consumer | What it does |
 |---|---|
-| `FaceGreeter` | "Hi!" greeting (via `/xiaozhi/admin/inject-text`) on first face detection after a cooldown window. |
+| `FaceGreeter` | "你好！" greeting (via `/xiaozhi/admin/inject-text`) on first face detection after a cooldown window. |
 | `SoundTurner` | Head-turn (via `/xiaozhi/admin/set-head-angles`) toward sound direction. |
 | `FaceLostAborter` | Aborts an in-flight TTS turn (via `/xiaozhi/admin/abort`) when the audience walks away. |
 | `WakeWordTurner` | Head-turn toward the speaker on wake-word event. |

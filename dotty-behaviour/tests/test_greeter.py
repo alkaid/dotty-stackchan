@@ -98,7 +98,7 @@ people:
     display_name: Brett
 """,
             )
-            llm, llm_calls = _llm_factory("Hey Brett, library day!")
+            llm, llm_calls = _llm_factory("你好 Brett，今天去图书馆吗？")
             tts = _RecordingTTS()
             g, state = _make(tdp, llm=llm, tts=tts, household=household)
 
@@ -113,9 +113,10 @@ people:
                 )
                 await let_consumer_settle()
                 await asyncio.sleep(0.02)
-                assert tts.calls == [("dev-1", "Hey Brett, library day!")]
+                assert tts.calls == [("dev-1", "你好 Brett，今天去图书馆吗？")]
                 assert len(llm_calls) == 1
                 assert "Brett" in llm_calls[0]
+                assert "SIMPLIFIED CHINESE ONLY" in llm_calls[0]
 
             await _drive(g, body)
 
@@ -145,7 +146,7 @@ people:
                     start_iso="2026-06-11T10:00:00", calendar_id="cal",
                 )
             ]
-            llm, llm_calls = _llm_factory("Morning Hudson, library day!")
+            llm, llm_calls = _llm_factory("早上好 Hudson，今天是图书馆日！")
             tts = _RecordingTTS()
             g, state = _make(
                 tdp, llm=llm, tts=tts, household=household, cache=cache,
@@ -222,11 +223,47 @@ people:
                 )
                 await let_consumer_settle()
                 await asyncio.sleep(0.02)
-                # Template fallback: "Good <window>, Brett!"
+                # Template fallback remains Chinese even when the LLM fails.
                 assert len(tts.calls) == 1
                 msg = tts.calls[0][1]
-                assert msg.startswith("Good ")
+                assert any(msg.startswith(word) for word in (
+                    "早上好", "下午好", "晚上好", "你好",
+                ))
                 assert "Brett" in msg
+
+            await _drive(g, body)
+
+    asyncio.run(go())
+
+
+def test_english_llm_greeting_falls_back_to_chinese_template() -> None:
+    async def go() -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td)
+            household = _household_with(
+                tdp,
+                """
+people:
+  brett:
+    display_name: Brett
+""",
+            )
+            llm, _ = _llm_factory("Good morning, Brett!")
+            tts = _RecordingTTS()
+            g, state = _make(tdp, llm=llm, tts=tts, household=household)
+
+            async def body() -> None:
+                state.broadcast(PerceptionEvent(
+                    device_id="dev-1",
+                    name="face_recognized",
+                    data={"identity": "brett"},
+                    ts=time.time(),
+                ))
+                await let_consumer_settle()
+                await asyncio.sleep(0.02)
+                assert len(tts.calls) == 1
+                assert any("\u4e00" <= ch <= "\u9fff" for ch in tts.calls[0][1])
+                assert "Good morning" not in tts.calls[0][1]
 
             await _drive(g, body)
 
@@ -322,8 +359,7 @@ def test_face_detected_promoted_when_use_face_detected_enabled() -> None:
                     await let_consumer_settle()
                     await asyncio.sleep(0.02)
                     assert len(tts.calls) == 1
-                    assert "haven" in tts.calls[0][1].lower() or \
-                           "met" in tts.calls[0][1].lower()
+                    assert any("\u4e00" <= ch <= "\u9fff" for ch in tts.calls[0][1])
 
                 await _drive(g, body)
         finally:

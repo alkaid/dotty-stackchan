@@ -34,7 +34,7 @@ export const takePhotoTool = {
     "Use take_photo when the user asks 'what do you see', mentions " +
       "something in front of the camera, or wants Dotty to describe the " +
       "current scene. Don't guess at the room contents — call this tool first.",
-    "If take_photo returns '(I can't see anything fresh right now)', say " +
+    "If take_photo returns '（现在没有可用的新画面）', say " +
       "so honestly to the user rather than inventing a description.",
   ],
   parameters: Type.Object({}),

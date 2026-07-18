@@ -131,6 +131,8 @@ services:
       DOTTY_SECRETS_DIR: /var/lib/dotty-behaviour/secrets
       HOUSEHOLD_YAML_PATH: /var/lib/dotty-behaviour/state/household.yaml
       GREETER_STATE_PATH: /var/lib/dotty-behaviour/state/greeter_state.json
+      DOTTY_RUNTIME_CONFIG_FILE: /var/lib/dotty-bridge/state/runtime-config.json
+      IDLE_PHOTOGRAPHER_ENABLED: ${IDLE_PHOTOGRAPHER_ENABLED:-true}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY-}
       VISION_API_KEY: ${VISION_API_KEY-}
       VISION_MODEL: ${VISION_MODEL:-google/gemini-3.1-flash-lite}
@@ -141,7 +143,7 @@ services:
       AUDIO_CAPTION_API_KEY: ${AUDIO_CAPTION_API_KEY-}
       AUDIO_CAPTION_MODEL: ${AUDIO_CAPTION_MODEL:-google/gemini-2.5-flash}
       AUDIO_CAPTION_API_URL: ${AUDIO_CAPTION_API_URL:-https://openrouter.ai/api/v1/chat/completions}
-      FACE_GREET_TEXT: ${FACE_GREET_TEXT-Hi!}
+      FACE_GREET_TEXT: ${FACE_GREET_TEXT-你好！}
       FACE_GREET_MIN_INTERVAL_SEC: ${FACE_GREET_MIN_INTERVAL_SEC:-30}
       FACE_GREET_COOLDOWN_SEC: ${FACE_GREET_COOLDOWN_SEC:-30}
       PURR_AUDIO_PATH: /opt/xiaozhi-esp32-server/config/assets/purr.opus
@@ -174,6 +176,7 @@ services:
       - ${DOTTY_BEHAVIOUR_STATE_DIR:-/mnt/user/appdata/dotty-behaviour}/state:/var/lib/dotty-behaviour/state
       - ${DOTTY_BEHAVIOUR_STATE_DIR:-/mnt/user/appdata/dotty-behaviour}/logs:/var/lib/dotty-behaviour/logs
       - ${DOTTY_BEHAVIOUR_STATE_DIR:-/mnt/user/appdata/dotty-behaviour}/secrets:/var/lib/dotty-behaviour/secrets:ro
+      - ${DOTTY_BRIDGE_STATE_DIR:-/mnt/user/appdata/dotty-bridge}/state:/var/lib/dotty-bridge/state:ro
 
   dotty-bridge:
     build:
@@ -216,6 +219,7 @@ services:
       DOTTY_PI_THINK_REASONING_EFFORT: ${DOTTY_PI_THINK_REASONING_EFFORT:-high}
       XIAOZHI_PUBLIC_WS_BASE_URL: ${XIAOZHI_PUBLIC_WS_BASE_URL-}
       XIAOZHI_PUBLIC_OTA_BASE_URL: ${XIAOZHI_PUBLIC_OTA_BASE_URL-}
+      IDLE_PHOTOGRAPHER_ENABLED: ${IDLE_PHOTOGRAPHER_ENABLED:-true}
     ports:
       - "${DOTTY_BRIDGE_PORT:-8081}:8081"
     volumes:

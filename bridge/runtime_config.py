@@ -17,6 +17,7 @@ CONFIG_KEYS = (
     "DOTTY_PI_THINK_REASONING_EFFORT",
     "XIAOZHI_PUBLIC_WS_BASE_URL",
     "XIAOZHI_PUBLIC_OTA_BASE_URL",
+    "IDLE_PHOTOGRAPHER_ENABLED",
 )
 
 DEFAULT_PATH = Path("/var/lib/dotty-bridge/state/runtime-config.json")

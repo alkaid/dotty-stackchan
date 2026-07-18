@@ -18,6 +18,7 @@ def test_take_photo_returns_fallback_when_cache_empty() -> None:
         r = client.get("/api/voice/take_photo")
         assert r.status_code == 200
         assert r.json() == {"description": TAKE_PHOTO_FALLBACK}
+        assert any("\u4e00" <= ch <= "\u9fff" for ch in TAKE_PHOTO_FALLBACK)
 
 
 def test_take_photo_returns_fresh_description() -> None:

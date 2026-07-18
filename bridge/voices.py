@@ -76,6 +76,7 @@ def _clean_config(provider: str, raw: Any) -> dict[str, Any]:
             "temperature": _number(raw.get("temperature", 0.3), "Temperature", 0.01, 2),
             "top_p": _number(raw.get("top_p", 0.7), "Top P", 0.01, 1),
             "top_k": _number(raw.get("top_k", 20), "Top K", 1, 100, integer=True),
+            "gain_db": _number(raw.get("gain_db", 3.0), "Output gain", -12, 12),
             "refine_prompt": _short_text(
                 raw.get("refine_prompt", "[oral_2][laugh_0][break_4]"),
                 "Refine prompt",

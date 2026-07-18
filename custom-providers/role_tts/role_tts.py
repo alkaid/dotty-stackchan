@@ -39,11 +39,12 @@ _TEXT_TRANSLATION = str.maketrans(
 )
 
 
-def _pcm16_bytes(waveform):
+def _pcm16_bytes(waveform, gain_db=3.0):
     samples = np.asarray(waveform, dtype=np.float32)
     if samples.ndim > 1:
         samples = samples[0]
     samples = np.nan_to_num(samples.reshape(-1), nan=0.0, posinf=1.0, neginf=-1.0)
+    samples *= 10.0 ** (float(gain_db) / 20.0)
     return (np.clip(samples, -1.0, 1.0) * 32767.0).astype(np.int16).tobytes()
 
 
@@ -274,7 +275,7 @@ class TTSProvider(TTSProviderBase):
                 if self.tts_stop_request or self.conn.client_abort:
                     self.chat.interrupt()
                     break
-                pcm = _pcm16_bytes(waveform)
+                pcm = _pcm16_bytes(waveform, config.get("gain_db", 3.0))
                 if pcm:
                     produced_audio = True
                     self.pcm_buffer.extend(pcm)

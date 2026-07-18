@@ -26,11 +26,12 @@ _CHAT_TTS_TEXT_TRANSLATION = str.maketrans(
 )
 
 
-def _pcm16_bytes(waveform):
+def _pcm16_bytes(waveform, gain_db=3.0):
     samples = np.asarray(waveform, dtype=np.float32)
     if samples.ndim > 1:
         samples = samples[0]
     samples = np.nan_to_num(samples.reshape(-1), nan=0.0, posinf=1.0, neginf=-1.0)
+    samples *= 10.0 ** (float(gain_db) / 20.0)
     return (np.clip(samples, -1.0, 1.0) * 32767.0).astype(np.int16).tobytes()
 
 
@@ -68,6 +69,9 @@ class TTSProvider(TTSProviderBase):
             config.get("refine_prompt", "[oral_2][laugh_0][break_4]")
         )
         self.code_prompt = str(config.get("code_prompt", "[speed_5]"))
+        self.gain_db = float(config.get("gain_db", 3.0))
+        if not -12.0 <= self.gain_db <= 12.0:
+            raise ValueError("chattts_local: gain_db must be between -12 and 12")
         self.stream_batch = int(config.get("stream_batch", 24))
         self.stream_speed = int(config.get("stream_speed", 12000))
         self.pass_first_n_batches = int(config.get("pass_first_n_batches", 2))
@@ -210,7 +214,7 @@ class TTSProvider(TTSProviderBase):
                 if self.tts_stop_request or self.conn.client_abort:
                     self.chat.interrupt()
                     break
-                pcm = _pcm16_bytes(waveform)
+                pcm = _pcm16_bytes(waveform, self.gain_db)
                 if pcm:
                     produced_audio = True
                     self.pcm_buffer.extend(pcm)

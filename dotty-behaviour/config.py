@@ -10,6 +10,7 @@ dotty_behaviour.config or use the helpers in tests/.
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -229,8 +230,27 @@ AUDIO_CAPTION_TIMEOUT_SEC: float = _env_float("AUDIO_CAPTION_TIMEOUT", 20.0)
 # repetitive "same scene" writes.
 # ---------------------------------------------------------------------------
 IDLE_PHOTOGRAPHER_ENABLED: bool = (
-    os.environ.get("IDLE_PHOTOGRAPHER_ENABLED", "1") == "1"
+    os.environ.get("IDLE_PHOTOGRAPHER_ENABLED", "1").strip().lower()
+    in ("1", "true", "yes", "on")
 )
+RUNTIME_CONFIG_FILE: Path = Path(os.environ.get(
+    "DOTTY_RUNTIME_CONFIG_FILE",
+    "/var/lib/dotty-bridge/state/runtime-config.json",
+))
+
+
+def idle_photographer_enabled() -> bool:
+    """Return the live Bridge override, falling back to the startup default."""
+    try:
+        payload = json.loads(RUNTIME_CONFIG_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return IDLE_PHOTOGRAPHER_ENABLED
+    if not isinstance(payload, dict):
+        return IDLE_PHOTOGRAPHER_ENABLED
+    raw = payload.get("IDLE_PHOTOGRAPHER_ENABLED")
+    if not isinstance(raw, str):
+        return IDLE_PHOTOGRAPHER_ENABLED
+    return raw.strip().lower() in ("1", "true", "yes", "on")
 IDLE_PHOTOGRAPHER_SLEEP_MIN_SEC: float = _env_float(
     "IDLE_PHOTOGRAPHER_SLEEP_MIN_SEC", 180.0
 )
@@ -245,9 +265,8 @@ IDLE_PHOTOGRAPHER_NOTABLE_JACCARD: float = _env_float(
 )
 
 IDLE_WANDER_PROMPT: str = (
-    "Describe what you see in 1–3 sentences as a curious robot would "
-    "notice it — light, objects, the room's mood. No people "
-    "identification needed. Stay short and concrete."
+    "请用简体中文以好奇的小机器人视角，用 1至3 句话描述眼前的光线、"
+    "物品和房间氛围。无需识别人物，保持简短、具体，不要使用英文。"
 )
 
 # ---------------------------------------------------------------------------
@@ -275,7 +294,7 @@ SCENE_SYNTHESIS_TRIGGER_EVENTS: frozenset[str] = frozenset(
 
 
 # ---------------------------------------------------------------------------
-# Face greeter — bare "Hi!" on face_detected when the household has no
+# Face greeter — bare Chinese greeting when the household has no
 # appearance-bearing roster. With a roster, the proactive greeter (Layer
 # 6, deferred) handles named greetings via the face_recognized path.
 # ---------------------------------------------------------------------------
@@ -283,16 +302,16 @@ FACE_GREET_MIN_INTERVAL_SEC: float = _env_float(
     "FACE_GREET_MIN_INTERVAL_SEC",
     _env_float("FACE_GREET_COOLDOWN_SEC", 30.0),
 )
-FACE_GREET_TEXT: str = os.environ.get("FACE_GREET_TEXT", "Hi!")
+FACE_GREET_TEXT: str = os.environ.get("FACE_GREET_TEXT", "你好！")
 FACE_GREET_HOUR_START: int = _env_int("FACE_GREET_HOUR_START", 6)
 FACE_GREET_HOUR_END: int = _env_int("FACE_GREET_HOUR_END", 21)
 
-# Name greeter (face_recognized) — "Oh, it's <name>!" via TTS.
+# Name greeter (face_recognized) — short Chinese greeting via TTS.
 FACE_NAME_GREET_MIN_INTERVAL_SEC: float = _env_float(
     "FACE_NAME_GREET_MIN_INTERVAL_SEC", 30.0
 )
 FACE_NAME_GREET_TEMPLATE: str = os.environ.get(
-    "FACE_NAME_GREET_TEMPLATE", "Oh, it's {name}!"
+    "FACE_NAME_GREET_TEMPLATE", "你好，{name}！"
 )
 FACE_NAME_GREET_QUIET_AFTER_CHAT_SEC: float = _env_float(
     "FACE_NAME_GREET_QUIET_AFTER_CHAT_SEC", 10.0

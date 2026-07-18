@@ -69,6 +69,16 @@
     </fieldset>
 
     <fieldset class="flex flex-col gap-3 border-t border-base-300 pt-4">
+      <legend class="text-sm font-semibold mb-2 pr-2">Ambient behavior</legend>
+      <label class="label cursor-pointer justify-start gap-3 px-0">
+        <input type="checkbox" name="IDLE_PHOTOGRAPHER_ENABLED" value="true"
+               class="toggle toggle-primary"
+               {% if values.IDLE_PHOTOGRAPHER_ENABLED == "true" %}checked{% endif %}>
+        <span class="label-text">Idle scene photos</span>
+      </label>
+    </fieldset>
+
+    <fieldset class="flex flex-col gap-3 border-t border-base-300 pt-4">
       <legend class="text-sm font-semibold mb-2 pr-2">Device endpoints</legend>
       <label class="form-control w-full">
         <span class="label-text mb-1">WebSocket base URL</span>

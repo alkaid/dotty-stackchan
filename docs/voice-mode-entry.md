@@ -21,7 +21,7 @@ Cross-link: [wake-word.md](./wake-word.md) covers the whole stack — current mo
 
 ### 2. Face detection — firmware → dotty-behaviour
 
-The on-device face tracker (PSRAM-mounted ESP-WHO model in `firmware/firmware/main/stackchan/modifiers/face_tracking.cpp`) emits a `face_detected` perception event when a human face enters the camera's field of view. The xiaozhi-server-side relay forwards that event to `dotty-behaviour`'s `/api/perception/event` bus, where the `face_greeter` consumer (`dotty-behaviour/consumers/face_greeter.py`) injects the configured greeting (`FACE_GREET_TEXT`, default "Hi!") via the xiaozhi `/xiaozhi/admin/inject-text` route. xiaozhi speaks the greeting and opens the mic for the reply.
+The on-device face tracker (PSRAM-mounted ESP-WHO model in `firmware/firmware/main/stackchan/modifiers/face_tracking.cpp`) emits a `face_detected` perception event when a human face enters the camera's field of view. The xiaozhi-server-side relay forwards that event to `dotty-behaviour`'s `/api/perception/event` bus, where the `face_greeter` consumer (`dotty-behaviour/consumers/face_greeter.py`) injects the configured greeting (`FACE_GREET_TEXT`, default "你好！") via the xiaozhi `/xiaozhi/admin/inject-text` route. xiaozhi speaks the greeting and opens the mic for the reply.
 
 A per-device minimum interval (`FACE_GREET_MIN_INTERVAL_SEC`, default 30 s) stops a stationary user from re-triggering on every blink of the tracker. Set `FACE_GREET_TEXT=""` to suppress the verbal greeting and just open the mic silently — these knobs live in `dotty-behaviour/config.py`.
 

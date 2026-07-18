@@ -250,6 +250,9 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 _CONFIG_DEFAULTS = {key: os.environ.get(key, "") for key in CONFIG_KEYS}
+_CONFIG_DEFAULTS["IDLE_PHOTOGRAPHER_ENABLED"] = os.environ.get(
+    "IDLE_PHOTOGRAPHER_ENABLED", "true"
+)
 _REASONING_EFFORTS = ("", "minimal", "low", "medium", "high", "xhigh")
 
 
@@ -454,12 +457,12 @@ async def dashboard(request: Request) -> Any:
 
 def _configuration_values() -> dict[str, str]:
     values = effective_config(_CONFIG_DEFAULTS)
-    values["DOTTY_PI_SIMPLE_REASONING"] = (
-        "true"
-        if values["DOTTY_PI_SIMPLE_REASONING"].strip().lower()
-        in ("1", "true", "yes", "on")
-        else "false"
-    )
+    for key in ("DOTTY_PI_SIMPLE_REASONING", "IDLE_PHOTOGRAPHER_ENABLED"):
+        values[key] = (
+            "true"
+            if values[key].strip().lower() in ("1", "true", "yes", "on")
+            else "false"
+        )
     return values
 
 
@@ -541,6 +544,7 @@ async def configuration_set(
     DOTTY_PI_THINK_REASONING_EFFORT: str = Form(""),
     XIAOZHI_PUBLIC_WS_BASE_URL: str = Form(...),
     XIAOZHI_PUBLIC_OTA_BASE_URL: str = Form(...),
+    IDLE_PHOTOGRAPHER_ENABLED: str = Form(""),
 ) -> Any:
     values = {
         "DOTTY_PI_MODEL": DOTTY_PI_MODEL,
@@ -554,6 +558,12 @@ async def configuration_set(
         "DOTTY_PI_THINK_REASONING_EFFORT": DOTTY_PI_THINK_REASONING_EFFORT,
         "XIAOZHI_PUBLIC_WS_BASE_URL": XIAOZHI_PUBLIC_WS_BASE_URL,
         "XIAOZHI_PUBLIC_OTA_BASE_URL": XIAOZHI_PUBLIC_OTA_BASE_URL,
+        "IDLE_PHOTOGRAPHER_ENABLED": (
+            "true"
+            if IDLE_PHOTOGRAPHER_ENABLED.strip().lower()
+            in ("1", "true", "yes", "on")
+            else "false"
+        ),
     }
     try:
         values = _validate_configuration(values)
@@ -810,6 +820,7 @@ def _voice_config_from_form(
     temperature: str,
     top_p: str,
     top_k: str,
+    gain_db: str,
     refine_prompt: str,
     code_prompt: str,
     edge_voice: str,
@@ -829,6 +840,7 @@ def _voice_config_from_form(
         "temperature": temperature,
         "top_p": top_p,
         "top_k": top_k,
+        "gain_db": gain_db,
         "refine_prompt": refine_prompt,
         "code_prompt": code_prompt,
     }
@@ -893,6 +905,7 @@ def _voice_profile_from_form(
     temperature: str,
     top_p: str,
     top_k: str,
+    gain_db: str,
     refine_prompt: str,
     code_prompt: str,
     edge_voice: str,
@@ -910,6 +923,7 @@ def _voice_profile_from_form(
             temperature=temperature,
             top_p=top_p,
             top_k=top_k,
+            gain_db=gain_db,
             refine_prompt=refine_prompt,
             code_prompt=code_prompt,
             edge_voice=edge_voice,
@@ -932,6 +946,7 @@ async def voice_save(
     temperature: str = Form("0.3"),
     top_p: str = Form("0.7"),
     top_k: str = Form("20"),
+    gain_db: str = Form("3.0"),
     refine_prompt: str = Form("[oral_2][laugh_0][break_4]"),
     code_prompt: str = Form("[speed_5]"),
     edge_voice: str = Form(DEFAULT_EDGE_VOICE),
@@ -941,6 +956,7 @@ async def voice_save(
 ) -> Any:
     raw_config = _voice_config_from_form(
         provider, seed=seed, temperature=temperature, top_p=top_p, top_k=top_k,
+        gain_db=gain_db,
         refine_prompt=refine_prompt, code_prompt=code_prompt,
         edge_voice=edge_voice, edge_rate=edge_rate, edge_volume=edge_volume,
         edge_pitch=edge_pitch,
@@ -999,6 +1015,7 @@ async def voice_preview(
     temperature: str = Form("0.3"),
     top_p: str = Form("0.7"),
     top_k: str = Form("20"),
+    gain_db: str = Form("3.0"),
     refine_prompt: str = Form("[oral_2][laugh_0][break_4]"),
     code_prompt: str = Form("[speed_5]"),
     edge_voice: str = Form(DEFAULT_EDGE_VOICE),
@@ -1015,6 +1032,7 @@ async def voice_preview(
         profile = _voice_profile_from_form(
             voice_id=voice_id, name=name or "Preview", provider=provider, seed=seed,
             temperature=temperature, top_p=top_p, top_k=top_k,
+            gain_db=gain_db,
             refine_prompt=refine_prompt, code_prompt=code_prompt,
             edge_voice=edge_voice, edge_rate=edge_rate,
             edge_volume=edge_volume, edge_pitch=edge_pitch,

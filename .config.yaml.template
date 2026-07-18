@@ -121,6 +121,7 @@ TTS:
     temperature: 0.3
     top_p: 0.7
     top_k: 20
+    gain_db: 3.0
     refine_prompt: "[oral_2][laugh_0][break_4]"
     code_prompt: "[speed_5]"
     stream_batch: 24

@@ -206,21 +206,19 @@ async def lifespan(app: FastAPI):
     else:
         log.info("dance reflector disabled by DANCE_REFLECTOR_ENABLED=0")
 
-    if config.IDLE_PHOTOGRAPHER_ENABLED:
-        consumers.append(
-            IdlePhotographer(
-                state,
-                xiaozhi,
-                NdjsonWriter(config.LOG_DIR, "perception", config.LOCAL_TZ),
-                sleep_min_sec=config.IDLE_PHOTOGRAPHER_SLEEP_MIN_SEC,
-                sleep_max_sec=config.IDLE_PHOTOGRAPHER_SLEEP_MAX_SEC,
-                result_wait_sec=config.IDLE_PHOTOGRAPHER_RESULT_WAIT_SEC,
-                notable_jaccard=config.IDLE_PHOTOGRAPHER_NOTABLE_JACCARD,
-                question=config.IDLE_WANDER_PROMPT,
-            )
+    consumers.append(
+        IdlePhotographer(
+            state,
+            xiaozhi,
+            NdjsonWriter(config.LOG_DIR, "perception", config.LOCAL_TZ),
+            sleep_min_sec=config.IDLE_PHOTOGRAPHER_SLEEP_MIN_SEC,
+            sleep_max_sec=config.IDLE_PHOTOGRAPHER_SLEEP_MAX_SEC,
+            result_wait_sec=config.IDLE_PHOTOGRAPHER_RESULT_WAIT_SEC,
+            notable_jaccard=config.IDLE_PHOTOGRAPHER_NOTABLE_JACCARD,
+            question=config.IDLE_WANDER_PROMPT,
+            enabled=config.idle_photographer_enabled,
         )
-    else:
-        log.info("idle photographer disabled by IDLE_PHOTOGRAPHER_ENABLED=0")
+    )
 
     if config.SCENE_SYNTHESIS_ENABLED:
         consumers.append(

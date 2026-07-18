@@ -51,6 +51,23 @@ class VoiceStoreTests(unittest.TestCase):
         state = delete_voice(edge["id"], self.path)
         self.assertEqual([voice["id"] for voice in state["voices"]], ["default"])
 
+    def test_chattts_gain_defaults_to_three_db_and_is_bounded(self) -> None:
+        config = {
+            "seed": 1,
+            "temperature": 0.3,
+            "top_p": 0.7,
+            "top_k": 20,
+            "refine_prompt": "[oral_2]",
+            "code_prompt": "[speed_5]",
+        }
+        state = create_voice("Local", "chattts", config, self.path)
+        self.assertEqual(state["voices"][1]["config"]["gain_db"], 3.0)
+
+        with self.assertRaisesRegex(VoiceError, "Output gain"):
+            create_voice(
+                "Too loud", "chattts", {**config, "gain_db": 13}, self.path,
+            )
+
     def test_invalid_provider_specific_values_are_rejected(self) -> None:
         with self.assertRaisesRegex(VoiceError, "Edge voice"):
             create_voice(

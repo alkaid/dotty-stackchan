@@ -46,6 +46,12 @@
                value="{{ config.top_k|default(20) }}" required>
       </label>
       <label class="form-control sm:col-span-2">
+        <span class="label-text mb-1">Output gain (dB)</span>
+        <input type="number" name="gain_db" class="input input-bordered"
+               min="-12" max="12" step="0.5"
+               value="{{ config.gain_db|default(3.0) }}" required>
+      </label>
+      <label class="form-control sm:col-span-2">
         <span class="label-text mb-1">Refine prompt</span>
         <input type="text" name="refine_prompt" class="input input-bordered font-mono"
                value="{{ config.refine_prompt|default('[oral_2][laugh_0][break_4]') }}" maxlength="300" required>
