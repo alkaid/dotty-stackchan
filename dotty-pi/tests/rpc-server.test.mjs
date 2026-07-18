@@ -168,8 +168,9 @@ test("tool completion is logged without arguments on the live HTTP RPC path", as
   } finally {
     console.log = originalLog;
   }
-  assert.deepEqual(lines, ["dotty-pi tool call name=remember id=tool-7"]);
-  assert.doesNotMatch(lines[0], /secret|value/);
+  const toolLines = lines.filter((line) => line.startsWith("dotty-pi tool call"));
+  assert.deepEqual(toolLines, ["dotty-pi tool call name=remember id=tool-7"]);
+  assert.doesNotMatch(toolLines[0], /secret|value/);
 });
 
 test("an abort response terminates the active Pi RPC turn", async () => {
@@ -258,6 +259,39 @@ test("a new turn aborts the active turn while health leaves it alone", async () 
     assert.equal(abortCalls, 1);
     assert.equal(await (await first).text(), "");
   });
+});
+
+test("turn endpoint forwards a sanitized latency trace id", async () => {
+  const seen = [];
+  const rpc = {
+    async health() {},
+    async newSession() {},
+    async turn(message, onText, turnId) {
+      seen.push({ message, turnId });
+      onText("ok");
+    },
+  };
+
+  await withServer(rpc, async (baseUrl) => {
+    const valid = await fetch(`${baseUrl}/turn`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "hello", turn_id: "trace-123" }),
+    });
+    assert.equal(await valid.text(), "ok");
+
+    const invalid = await fetch(`${baseUrl}/turn`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "again", turn_id: "bad trace\nvalue" }),
+    });
+    assert.equal(await invalid.text(), "ok");
+  });
+
+  assert.deepEqual(seen, [
+    { message: "hello", turnId: "trace-123" },
+    { message: "again", turnId: "untracked" },
+  ]);
 });
 
 test("new_session aborts an active turn before resetting", async () => {

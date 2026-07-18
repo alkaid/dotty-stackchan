@@ -3,6 +3,7 @@ import re
 import time
 import json
 import asyncio
+import uuid
 from difflib import SequenceMatcher
 from typing import TYPE_CHECKING
 
@@ -23,6 +24,14 @@ TAG = __name__
 
 VISION_BRIDGE_URL = os.environ.get("VISION_BRIDGE_URL", "")
 MIN_UTTERANCE_CHARS = int(os.environ.get("MIN_UTTERANCE_CHARS", "2"))
+
+
+def _log_turn_latency(conn: "ConnectionHandler", phase: str, turn_id: str, started_at: float) -> None:
+    elapsed_ms = max(0, round((time.monotonic() - started_at) * 1000))
+    conn.logger.bind(tag=TAG).info(
+        f"DOTTY_LATENCY component=xiaozhi turn={turn_id} "
+        f"phase={phase} elapsed_ms={elapsed_ms}"
+    )
 
 # Phase 4 — kid_mode + smart_mode are now firmware-owned toggle pips on the
 # right ring (StateManager writes index 8 = warm pink for kid_mode, index 9 =
@@ -643,8 +652,26 @@ def _submit_chat(conn: "ConnectionHandler", text: str) -> None:
     if language_instruction:
         prompt = f"{prompt}\n\n{language_instruction}"
     turn_generation = getattr(conn, "_dotty_chat_generation", 0) + 1
+    turn_id = uuid.uuid4().hex[:12]
+    submitted_at = time.monotonic()
+    started_at = getattr(conn, "_dotty_last_voice_at", None)
+    if not isinstance(started_at, (int, float)) or submitted_at - started_at > 10:
+        started_at = submitted_at
+    conn._dotty_last_voice_at = None
     conn._dotty_chat_generation = turn_generation
-    conn.executor.submit(conn.chat, prompt, 0, turn_generation)
+    conn._dotty_turn_id = turn_id
+    conn._dotty_turn_started_at = started_at
+    conn._dotty_tts_segment_started = False
+    conn._dotty_tts_segment_logged = False
+    conn._dotty_answer_first_opus = False
+    _log_turn_latency(conn, "llm_submit", turn_id, started_at)
+    language = getattr(conn, "_response_language", None)
+    if not language:
+        language = "zh" if re.search(r"[\u4e00-\u9fff]", text) else "en"
+    tts = getattr(conn, "tts", None)
+    if hasattr(tts, "arm_filler"):
+        tts.arm_filler(turn_id, turn_generation, language)
+    conn.executor.submit(conn.chat, prompt, 0, turn_generation, turn_id)
 
 
 # ---------- Dance / singing mode ----------
@@ -1083,6 +1110,7 @@ async def handleAudioMessage(conn: "ConnectionHandler", audio):
             conn.vad_resume_task = asyncio.create_task(resume_vad_detection(conn))
         return
     if have_voice:
+        conn._dotty_last_voice_at = time.monotonic()
         if conn.client_is_speaking and conn.client_listen_mode != "manual":
             await handleAbortMessage(conn)
     await no_voice_close_connect(conn, have_voice)
@@ -1102,11 +1130,12 @@ async def startToChat(conn: "ConnectionHandler", text):
     try:
         if text.strip().startswith("{") and text.strip().endswith("}"):
             data = json.loads(text)
-            if "speaker" in data and "content" in data:
-                speaker_name = data["speaker"]
-                _language_tag = data["language"]
+            if "content" in data:
+                speaker_name = data.get("speaker")
+                _language_tag = data.get("language")
                 actual_text = data["content"]
-                conn.logger.bind(tag=TAG).info(f"解析到说话人信息: {speaker_name}")
+                if speaker_name:
+                    conn.logger.bind(tag=TAG).info(f"解析到说话人信息: {speaker_name}")
     except (json.JSONDecodeError, KeyError):
         pass
 

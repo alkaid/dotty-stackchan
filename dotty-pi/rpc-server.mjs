@@ -6,6 +6,7 @@ import { once } from "node:events";
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
+import { performance } from "node:perf_hooks";
 
 import {
   effectiveRuntimeEnv,
@@ -19,6 +20,27 @@ const THINKING_LEVELS = new Set([
   "off", "minimal", "low", "medium", "high", "xhigh",
 ]);
 const ROLE_NAME_TOKEN = "{{ROLE_NAME}}";
+
+function traceId(value) {
+  const candidate = String(value ?? "");
+  return /^[A-Za-z0-9_-]{1,64}$/.test(candidate) ? candidate : "untracked";
+}
+
+function logToken(value) {
+  const candidate = String(value ?? "unknown");
+  return /^[A-Za-z0-9_.:-]{1,80}$/.test(candidate) ? candidate : "unknown";
+}
+
+function logLatency(turnId, phase, startedAt, fields = {}) {
+  const details = Object.entries(fields)
+    .map(([key, value]) => `${logToken(key)}=${logToken(value)}`)
+    .join(" ");
+  console.log(
+    `DOTTY_LATENCY component=dotty_pi turn=${traceId(turnId)} `
+      + `phase=${phase} elapsed_ms=${Math.max(0, Math.round(performance.now() - startedAt))}`
+      + (details ? ` ${details}` : ""),
+  );
+}
 
 function configuredRobotName(env = process.env) {
   const name = String(env.ROBOT_NAME ?? "Dotty").trim();
@@ -254,7 +276,10 @@ export class PiRpc {
     this.send({ id, type: "abort" });
   }
 
-  async turn(message, onText) {
+  async turn(message, onText, turnId = "untracked") {
+    const startedAt = performance.now();
+    let sawFirstText = false;
+    logLatency(turnId, "pi_prompt", startedAt);
     const id = this.nextIdFor("turn");
     this.send({ id, type: "prompt", message });
     this.activeTurnId = id;
@@ -266,6 +291,7 @@ export class PiRpc {
         if (frame?.type === "response" && frame.command === "prompt" && frame.id === id) {
           if (!frame.success) throw new Error(`pi rejected prompt: ${frame.error ?? "unknown"}`);
           sawAccept = true;
+          logLatency(turnId, "pi_accepted", startedAt);
           continue;
         }
         if (frame?.type === "response" && frame.command === "abort" && frame.success) {
@@ -274,9 +300,18 @@ export class PiRpc {
         }
         if (frame?.type === "message_update") {
           const event = frame.assistantMessageEvent;
-          if (event?.type === "text_delta" && event.delta) onText(event.delta);
+          if (event?.type === "text_delta" && event.delta) {
+            if (!sawFirstText) {
+              sawFirstText = true;
+              logLatency(turnId, "pi_first_text", startedAt);
+            }
+            onText(event.delta);
+          }
           if (event?.type === "toolcall_end") {
             const toolCall = event.toolCall ?? {};
+            logLatency(turnId, "pi_tool_end", startedAt, {
+              tool: toolCall.name ?? "unknown",
+            });
             console.log(
               `dotty-pi tool call name=${toolCall.name ?? "unknown"} id=${toolCall.id ?? "unknown"}`,
             );
@@ -285,6 +320,7 @@ export class PiRpc {
         }
         if (frame?.type === "agent_end") {
           if (!sawAccept) throw new Error("agent_end before prompt-accept");
+          logLatency(turnId, "pi_done", startedAt);
           return;
         }
       }
@@ -363,12 +399,13 @@ export function createRpcServer(rpc = new PiRpc()) {
         ownsRpc = true;
         const body = await readJson(req);
         const message = String(body.message ?? "");
+        const turnId = traceId(body.turn_id);
         if (!message.trim()) {
           json(res, 400, { error: "message required" });
           return;
         }
         res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
-        operation = rpc.turn(message, (delta) => res.write(delta));
+        operation = rpc.turn(message, (delta) => res.write(delta), turnId);
         activeOperation = operation;
         activeTurn = operation;
         await operation;

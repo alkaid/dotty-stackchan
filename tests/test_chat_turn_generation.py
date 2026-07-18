@@ -90,6 +90,9 @@ class _Logger:
     def debug(self, *_args, **_kwargs):
         pass
 
+    def info(self, *_args, **_kwargs):
+        pass
+
 
 class _Executor:
     def __init__(self):
@@ -123,8 +126,11 @@ class TestChatTurnGeneration(unittest.TestCase):
             conn.client_abort,
             "abort stays set until replacement chat owns its new sentence id",
         )
-        self.assertEqual(conn.executor.calls[0], (conn.chat, "first", 0, 1))
-        self.assertEqual(conn.executor.calls[1], (conn.chat, "replacement", 0, 2))
+        self.assertEqual(conn.executor.calls[0][:4], (conn.chat, "first", 0, 1))
+        self.assertEqual(conn.executor.calls[1][:4], (conn.chat, "replacement", 0, 2))
+        self.assertRegex(conn.executor.calls[0][4], r"^[0-9a-f]{12}$")
+        self.assertRegex(conn.executor.calls[1][4], r"^[0-9a-f]{12}$")
+        self.assertNotEqual(conn.executor.calls[0][4], conn.executor.calls[1][4])
 
     def test_connection_patch_has_fail_closed_upstream_anchors(self):
         fixture = '''    def chat(self, query, depth=0):
@@ -132,6 +138,13 @@ class TestChatTurnGeneration(unittest.TestCase):
         current_sentence_id = None
             self.sentence_id = current_sentence_id  # 更新共享属性
             self.dialogue.put(Message(role="user", content=query))
+            else:
+                llm_responses = self.llm.response(
+                    self.session_id,
+                    self.dialogue.get_llm_dialogue_with_memory(
+                        memory_str, self.config.get("voiceprint", {})
+                    ),
+                )
             for response in llm_responses:
                 if self.client_abort:
                     break
@@ -145,6 +158,8 @@ class TestChatTurnGeneration(unittest.TestCase):
         patched = _connection_patch.patch_source(fixture)
 
         self.assertIn("turn_generation=None", patched)
+        self.assertIn("turn_id=None", patched)
+        self.assertIn('llm_kwargs["turn_id"] = turn_id', patched)
         self.assertIn("Skipping stale chat turn", patched)
         self.assertIn("self.client_abort = False", patched)
         self.assertIn("Discarding stale chat turn", patched)

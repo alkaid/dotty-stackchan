@@ -30,7 +30,7 @@ def patch_source(source: str) -> str:
         # 保存当前任务的sentence_id到局部变量，避免被新任务覆盖
         current_sentence_id = None
 ''',
-        '''    def chat(self, query, depth=0, turn_generation=None):
+        '''    def chat(self, query, depth=0, turn_generation=None, turn_id=None):
         # DOTTY-PATCH: a superseded executor thread must never emit into a
         # replacement turn, even after the replacement clears client_abort.
         if (
@@ -46,6 +46,34 @@ def patch_source(source: str) -> str:
         current_sentence_id = None
 ''',
         "chat signature",
+    )
+    source = _replace_once(
+        source,
+        '''            else:
+                llm_responses = self.llm.response(
+                    self.session_id,
+                    self.dialogue.get_llm_dialogue_with_memory(
+                        memory_str, self.config.get("voiceprint", {})
+                    ),
+                )
+''',
+        '''            else:
+                llm_kwargs = {}
+                if (
+                        turn_id is not None
+                        and self.config.get("selected_module", {}).get("LLM")
+                        == "PiVoiceLLM"
+                ):
+                    llm_kwargs["turn_id"] = turn_id
+                llm_responses = self.llm.response(
+                    self.session_id,
+                    self.dialogue.get_llm_dialogue_with_memory(
+                        memory_str, self.config.get("voiceprint", {})
+                    ),
+                    **llm_kwargs,
+                )
+''',
+        "PiVoiceLLM turn id",
     )
     source = _replace_once(
         source,
@@ -123,7 +151,8 @@ def patch_source(source: str) -> str:
         '''            self.chat(None, depth=depth + 1)
 ''',
         '''            self.chat(
-                None, depth=depth + 1, turn_generation=turn_generation
+                None, depth=depth + 1, turn_generation=turn_generation,
+                turn_id=turn_id,
             )
 ''',
         "recursive chat generation",

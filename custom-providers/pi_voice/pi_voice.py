@@ -35,6 +35,8 @@ from __future__ import annotations
 
 import json
 import os
+import time
+import uuid
 import unicodedata
 from pathlib import Path
 from typing import Iterator
@@ -215,6 +217,8 @@ class LLMProvider(LLMProviderBase):
     # xiaozhi-server's voice loop calls this as a sync generator.
     # Each yielded string becomes a TTS chunk.
     def response(self, session_id, dialogue, **kwargs) -> Iterator[str]:
+        turn_id = str(kwargs.get("turn_id") or uuid.uuid4().hex[:12])
+        started_at = time.monotonic()
         self._kid_mode = _read_kid_mode()
         user_text = _last_user_text(dialogue)
         if not user_text:
@@ -238,17 +242,35 @@ class LLMProvider(LLMProviderBase):
             # Emoji enforcement precedes filtering, matching OpenAICompat: in
             # kid mode the filter still makes one atomic whole-turn decision;
             # outside it, chunks stream after the first meaningful one.
+            first_chunk = True
+            source = self._client.iter_turn_text(prompt, turn_id=turn_id)
             for chunk in filter_tts_stream(
-                _enforce_leading_emoji(self._client.iter_turn_text(prompt)),
+                _enforce_leading_emoji(source),
                 self._kid_mode,
                 on_hit=self._on_filter_hit,
             ):
+                if first_chunk:
+                    self._log_latency(turn_id, "llm_first_text", started_at)
+                    first_chunk = False
                 yield chunk
+            self._log_latency(turn_id, "llm_done", started_at)
         except PiClientError as exc:
+            self._log_latency(turn_id, "llm_error", started_at)
             logger.error("PiVoiceLLM turn failed: %s", exc)
             for line in self._client.recent_stderr()[-5:]:
                 logger.error("  pi.stderr: %s", line)
             yield f"{FALLBACK_EMOJI} (brain offline — try again in a moment)"
+
+    def _log_latency(self, turn_id: str, phase: str, started_at: float) -> None:
+        elapsed_ms = max(0, round((time.monotonic() - started_at) * 1000))
+        message = (
+            f"DOTTY_LATENCY component=pi_voice turn={turn_id} "
+            f"phase={phase} elapsed_ms={elapsed_ms}"
+        )
+        try:
+            logger.bind(tag=TAG).info(message)  # type: ignore[attr-defined]
+        except AttributeError:
+            logger.info(message)
 
     def _on_filter_hit(self, tier: str, match) -> None:
         # Local logging only — the Prometheus counter / safety ring live in

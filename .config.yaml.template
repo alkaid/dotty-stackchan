@@ -114,6 +114,12 @@ TTS:
     device: auto
     roles_path: /var/lib/dotty-bridge/state/roles.json
     voices_path: /var/lib/dotty-bridge/state/voices.json
+    edge_streaming: true
+    filler:
+      enabled: true
+      delay_ms: 1200
+      cache_dir: /opt/xiaozhi-esp32-server/tmp/filler-cache
+      max_cache_bytes: 16777216
   ChatTTS:
     type: chattts_local
     model_path: /opt/xiaozhi-esp32-server/models/chattts

@@ -35,7 +35,7 @@ RESET  := \033[0m
 DL_FILE = dl_file() { if curl -fL --retry 3 --retry-delay 1 --progress-bar -o "$$2" "$$1"; then _sz=$$(wc -c < "$$2" 2>/dev/null || echo 0); if [ "$$_sz" -lt 100 ]; then echo -e "  $(RED)$$2: only $$_sz bytes — treating as a failed download$(RESET)"; rm -f "$$2"; return 1; fi; else echo -e "  $(RED)Failed to download $$1$(RESET)"; rm -f "$$2"; return 1; fi; }
 
 # ── Targets ──────────────────────────────────────────────────────────
-.PHONY: help setup xiaozhi-base fetch-models doctor up simulator simulator-only down logs status voice-list voice-install sbom verify-firmware test test-node lint check _preflight-compose _preflight-rendered
+.PHONY: help setup xiaozhi-base fetch-models doctor up simulator simulator-only down logs status latency-report voice-list voice-install sbom verify-firmware test test-node lint check _preflight-compose _preflight-rendered
 
 # ─────────────────────────────────────────────────────────────────────
 # _preflight-compose — fail fast if Docker Compose v2 plugin is missing
@@ -106,6 +106,9 @@ lint: ## Run ruff lint over the repo
 	ruff check .
 
 check: lint test test-node ## Run lint + Python/Node tests
+
+latency-report: ## Summarise per-turn latency phases from Docker logs (SINCE=24h)
+	python3 scripts/latency_report.py --since "$(if $(SINCE),$(SINCE),24h)"
 
 # ─────────────────────────────────────────────────────────────────────
 # setup — validate .env, render config, fetch models, start compose

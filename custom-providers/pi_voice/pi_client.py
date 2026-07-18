@@ -69,11 +69,11 @@ class PiHttpClient:
         except Exception as exc:
             raise PiClientError(f"new_session failed: {exc}") from exc
 
-    def iter_turn_text(self, prompt: str) -> Iterator[str]:
+    def iter_turn_text(self, prompt: str, *, turn_id: str | None = None) -> Iterator[str]:
         try:
             with requests.post(
                 f"{self._base_url}/turn",
-                json={"message": prompt},
+                json={"message": prompt, "turn_id": turn_id},
                 timeout=self._turn_timeout_sec,
                 stream=True,
             ) as resp:
@@ -195,7 +195,7 @@ class PiClient:
                 return
         raise PiClientError("new_session timed out waiting for response")
 
-    def iter_turn_text(self, prompt: str) -> Iterator[str]:
+    def iter_turn_text(self, prompt: str, *, turn_id: str | None = None) -> Iterator[str]:
         """Send a `prompt` command and yield user-visible text deltas
         until `agent_end`. Thinking deltas and any other event types
         are silently dropped — the caller's only job is to forward what

@@ -40,6 +40,7 @@ class FakeClient:
 
     def __init__(self):
         self.prompts: list[str] = []
+        self.turn_ids: list[str | None] = []
         self.new_session_calls = 0
         self.scripted_chunks: list[list[str]] = []
         self.scripted_errors: list[BaseException | None] = []
@@ -52,8 +53,9 @@ class FakeClient:
     def new_session(self) -> None:
         self.new_session_calls += 1
 
-    def iter_turn_text(self, prompt: str) -> Iterator[str]:
+    def iter_turn_text(self, prompt: str, *, turn_id: str | None = None) -> Iterator[str]:
         self.prompts.append(prompt)
+        self.turn_ids.append(turn_id)
         chunks = self.scripted_chunks.pop(0) if self.scripted_chunks else []
         err = self.scripted_errors.pop(0) if self.scripted_errors else None
         if err is not None:
@@ -81,6 +83,21 @@ class TestSandwichInjection(unittest.TestCase):
         # Sanity: the kid-mode-specific bullets must be in the suffix.
         self.assertIn("YOUNG CHILD", client.prompts[0])
         self.assertIn("SELF-HARM EXCEPTION", client.prompts[0])
+        self.assertRegex(client.turn_ids[0] or "", r"^[0-9a-f]{12}$")
+
+    def test_turn_id_is_forwarded_to_http_client(self):
+        os.environ["DOTTY_KID_MODE"] = "false"
+        client = FakeClient()
+        client.script_turn(["😊 Hi"])
+        provider = LLMProvider({}, client=client)  # type: ignore[arg-type]
+
+        list(provider.response(
+            "sess-1",
+            [{"role": "user", "content": "Hello"}],
+            turn_id="trace-123",
+        ))
+
+        self.assertEqual(client.turn_ids, ["trace-123"])
 
     def test_suffix_appended_kid_mode_off(self):
         os.environ["DOTTY_KID_MODE"] = "false"
