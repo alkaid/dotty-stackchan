@@ -13,6 +13,8 @@ import {
 
 const PORT = Number(process.env.DOTTY_PI_RPC_PORT ?? "8091");
 const TURN_TIMEOUT_MS = Number(process.env.DOTTY_PI_TURN_TIMEOUT_MS ?? "120000");
+const DOTTY_EXTENSION_PATH =
+  "/opt/dotty-pi/extensions/dotty-pi-ext/src/index.ts";
 const THINKING_LEVELS = new Set([
   "off", "minimal", "low", "medium", "high", "xhigh",
 ]);
@@ -71,6 +73,7 @@ export function buildPiArgs(env = effectiveRuntimeEnv()) {
     "--model", env.DOTTY_PI_MODEL ?? "dotty-simple",
     "--no-session",
     "--no-builtin-tools",
+    "--extension", DOTTY_EXTENSION_PATH,
     "--no-context-files",
     "--no-skills",
     "--no-prompt-templates",

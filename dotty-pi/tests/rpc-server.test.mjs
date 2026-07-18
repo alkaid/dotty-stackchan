@@ -44,7 +44,7 @@ async function withServer(rpc, run) {
   }
 }
 
-test("pi starts with the baked persona and no built-in tools", () => {
+test("pi starts with the baked persona and explicit Dotty extension", () => {
   const dir = mkdtempSync(join(tmpdir(), "dotty-pi-test-"));
   const promptPath = join(dir, "persona.md");
   writeFileSync(promptPath, "You are Dotty.\n");
@@ -56,6 +56,10 @@ test("pi starts with the baked persona and no built-in tools", () => {
       DOTTY_PI_MODEL: "dotty-simple",
     });
     assert.ok(args.includes("--no-builtin-tools"));
+    assert.equal(
+      args[args.indexOf("--extension") + 1],
+      "/opt/dotty-pi/extensions/dotty-pi-ext/src/index.ts",
+    );
     assert.equal(args[args.indexOf("--system-prompt") + 1], "You are Dotty.");
     assert.equal(args[args.indexOf("--thinking") + 1], "off");
   } finally {
