@@ -63,3 +63,32 @@ def test_idle_photographer_runtime_override_is_live(tmp_path: Path) -> None:
         text=True,
     )
     assert result.stdout.strip() == "False"
+
+
+def test_sound_turn_defaults_are_gentle() -> None:
+    process_env = os.environ.copy()
+    for name in (
+        "SOUND_TURN_COOLDOWN_SEC",
+        "SOUND_TURN_YAW_DEG",
+        "SOUND_TURN_SPEED",
+    ):
+        process_env.pop(name, None)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import config; "
+                "print(config.SOUND_TURN_COOLDOWN_SEC); "
+                "print(config.SOUND_TURN_YAW_DEG); "
+                "print(config.SOUND_TURN_SPEED)"
+            ),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        env=process_env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert result.stdout.splitlines() == ["8.0", "25", "120"]

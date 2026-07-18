@@ -101,9 +101,9 @@ FACE_LOST_ABORT_WINDOW_SEC: float = _env_float("FACE_LOST_ABORT_WINDOW_SEC", 12.
 FACE_LOST_ABORT_GRACE_SEC: float = _env_float("FACE_LOST_ABORT_GRACE_SEC", 4.0)
 
 # sound_turner — gentler "curious about an ambient noise" head turn.
-SOUND_TURN_COOLDOWN_SEC: float = _env_float("SOUND_TURN_COOLDOWN_SEC", 3.0)
-SOUND_TURN_YAW_DEG: int = _env_int("SOUND_TURN_YAW_DEG", 45)
-SOUND_TURN_SPEED: int = _env_int("SOUND_TURN_SPEED", 250)
+SOUND_TURN_COOLDOWN_SEC: float = _env_float("SOUND_TURN_COOLDOWN_SEC", 8.0)
+SOUND_TURN_YAW_DEG: int = _env_int("SOUND_TURN_YAW_DEG", 25)
+SOUND_TURN_SPEED: int = _env_int("SOUND_TURN_SPEED", 120)
 # How long after the last conversation to suppress the ambient turner
 # (sound from the user mid-chat shouldn't yank the head). Bridge.py
 # hard-codes this as 30.0 inline; surfaced as an env knob here.
