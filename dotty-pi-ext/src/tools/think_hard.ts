@@ -14,15 +14,52 @@
 
 import { Type } from "typebox";
 import {
+  configuredOpenAIApi,
+  type OpenAIApi,
+  type OpenAIRequest,
+  postOpenAIRequest,
   TimeoutError,
-  postChatCompletion,
   type ChatCompletionRequest,
+  type ResponsesRequest,
+  WEB_SEARCH_TOOL,
 } from "../lib/llama_swap.ts";
 
 const DEFAULT_MODEL = process.env.VOICE_THINKER_MODEL ?? "dotty-think";
 const SYSTEM_PROMPT =
   "Answer the user's question concisely in 1-2 sentences. Be precise.";
 const MAX_OUTPUT_CHARS = 500;
+const MAX_SEARCH_INPUT_CHARS = 2000;
+const SEARCH_TOOL_BLOCK_REASON =
+  "Local tools are disabled after web search for this session.";
+
+export function createSearchIsolationGate(
+  searchEnabled: () => boolean = () =>
+    configuredOpenAIApi() === "openai-responses",
+) {
+  let currentUserPrompt = "";
+  let searchStarted = false;
+  return {
+    startSession(): void {
+      currentUserPrompt = "";
+      searchStarted = false;
+    },
+    setUserPrompt(prompt: string): void {
+      currentUserPrompt = Array.from((prompt ?? "").trim())
+        .slice(0, MAX_SEARCH_INPUT_CHARS)
+        .join("");
+    },
+    getUserPrompt(): string {
+      return currentUserPrompt;
+    },
+    beforeToolCall(toolName: string): { block: true; reason: string } | undefined {
+      if (searchStarted) {
+        return { block: true, reason: SEARCH_TOOL_BLOCK_REASON };
+      }
+      if (toolName === "think_hard" && searchEnabled()) searchStarted = true;
+      return undefined;
+    },
+  };
+}
 
 /**
  * Pure request-body builder. Separated so the oracle can diff our body
@@ -31,7 +68,8 @@ const MAX_OUTPUT_CHARS = 500;
 export function buildThinkRequest(
   question: string,
   model: string = DEFAULT_MODEL,
-): ChatCompletionRequest {
+  api: OpenAIApi = configuredOpenAIApi(),
+): OpenAIRequest {
   const maxTokens = Number.parseInt(
     process.env.DOTTY_PI_THINK_MAX_TOKENS ?? "4096",
     10,
@@ -42,6 +80,21 @@ export function buildThinkRequest(
   const reasoningEffort = (
     process.env.DOTTY_PI_THINK_REASONING_EFFORT ?? "high"
   ).trim();
+  if (api === "openai-responses") {
+    return {
+      model,
+      instructions: SYSTEM_PROMPT,
+      input: question,
+      max_output_tokens:
+        Number.isFinite(maxTokens) && maxTokens > 0 ? maxTokens : 4096,
+      stream: false,
+      store: false,
+      tools: [WEB_SEARCH_TOOL],
+      ...(reasoning && reasoningEffort
+        ? { reasoning: { effort: reasoningEffort } }
+        : {}),
+    } satisfies ResponsesRequest;
+  }
   return {
     model,
     messages: [
@@ -53,7 +106,7 @@ export function buildThinkRequest(
     stream: false,
     chat_template_kwargs: { enable_thinking: reasoning },
     ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
-  };
+  } satisfies ChatCompletionRequest;
 }
 
 export interface ThinkHardOptions {
@@ -61,6 +114,7 @@ export interface ThinkHardOptions {
   timeoutSec?: number;
   model?: string;
   apiKey?: string;
+  api?: OpenAIApi;
 }
 
 /**
@@ -72,12 +126,14 @@ export async function runThinkHard(
 ): Promise<string> {
   const q = (question ?? "").trim();
   if (!q) return "(empty question)";
-  const body = buildThinkRequest(q, opts.model);
+  const api = opts.api ?? configuredOpenAIApi();
+  const body = buildThinkRequest(q, opts.model, api);
   try {
-    const content = await postChatCompletion(body, {
+    const content = await postOpenAIRequest(body, {
       url: opts.url,
       timeoutSec: opts.timeoutSec,
       apiKey: opts.apiKey,
+      api,
     });
     // Python: (content or "").strip()[:500]
     // JS .slice is OK here — the 500-char cap is generous and the
@@ -94,33 +150,31 @@ export async function runThinkHard(
   }
 }
 
-export const thinkHardTool = {
-  name: "think_hard",
-  label: "Think Hard",
-  description:
-    "Send a single question to a larger reasoning model for a precise " +
-    "1-2 sentence answer. Use only when the quick chat path can't " +
-    "handle the question (math, lookups, technical specifics).",
-  promptSnippet:
-    "Escalate a single question to the configured think_hard model.",
-  promptGuidelines: [
-    "Use think_hard when the user asks a factual or technical question " +
-      "that needs precise reasoning. Keep the question self-contained.",
-  ],
-  parameters: Type.Object({
-    question: Type.String({
-      description:
-        "Self-contained question for the reasoning model. Include any context inline.",
-    }),
-  }),
-  async execute(
-    _toolCallId: string,
-    params: { question: string },
-    _signal: AbortSignal | undefined,
-    _onUpdate: unknown,
-    _ctx: unknown,
-  ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-    const text = await runThinkHard(params.question);
-    return { content: [{ type: "text", text }] };
-  },
-};
+export function createThinkHardTool(currentUserPrompt: () => string) {
+  return {
+    name: "think_hard",
+    label: "Think Hard",
+    description:
+      "Send the current user's question to an isolated reasoning model with " +
+      "web search for a precise 1-2 sentence answer. Use when the quick chat " +
+      "path needs current facts, math, lookups, or technical specifics.",
+    promptSnippet:
+      "Escalate the current user question to the configured think_hard model.",
+    promptGuidelines: [
+      "Use think_hard when the current user asks a factual or technical " +
+        "question that needs precise reasoning or current web information.",
+    ],
+    parameters: Type.Object({}),
+    executionMode: "sequential" as const,
+    async execute(
+      _toolCallId: string,
+      _params: Record<string, never>,
+      _signal: AbortSignal | undefined,
+      _onUpdate: unknown,
+      _ctx: unknown,
+    ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+      const text = await runThinkHard(currentUserPrompt());
+      return { content: [{ type: "text", text }] };
+    },
+  };
+}

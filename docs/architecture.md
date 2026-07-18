@@ -87,7 +87,7 @@ sequenceDiagram
     XZ->>XZ: FunASR / Whisper → text
     XZ->>PV: generate() call
     PV->>PI: POST /turn (HTTP RPC over Compose network)
-    PI->>Model: chat/completions
+    PI->>Model: configured API<br/>(Responses or Chat Completions)
     Model-->>PI: "😊 The sky is blue!"
     PI-->>PV: JSONL text chunks (TTS-bound only)
     PV-->>XZ: streamed text
@@ -107,14 +107,25 @@ sequenceDiagram
     participant PI as dotty-pi<br/>(pi agent + dotty-pi-ext)
     participant Simple as DOTTY_PI_MODEL
     participant Think as VOICE_THINKER_MODEL
+    participant Web as hosted web_search
     participant BH as dotty-behaviour<br/>:8090
 
-    PI->>Simple: chat/completions
-    Simple-->>PI: tool_call: think_hard(question)
-    PI->>Think: direct POST /v1/chat/completions<br/>(DOTTY_PI_THINK_* settings)
-    Think-->>PI: reasoned answer
-    PI->>Simple: chat/completions (tool result in context)
+    PI->>PI: capture current raw user prompt<br/>(max 2000 codepoints)
+    PI->>Simple: configured API<br/>(Responses or Chat Completions)
+    Simple-->>PI: tool_call: think_hard()
+    alt DOTTY_PI_PROVIDER_API=openai-responses
+        PI->>Think: POST /v1/responses<br/>(raw prompt + DOTTY_PI_THINK_* settings)
+        Think->>Web: web_search
+        Web-->>Think: current public information
+        Think-->>PI: reasoned answer
+        PI->>PI: block later tool calls for this session
+    else DOTTY_PI_PROVIDER_API=openai-completions
+        PI->>Think: POST /v1/chat/completions<br/>(raw prompt + DOTTY_PI_THINK_* settings)
+        Think-->>PI: reasoned answer
+    end
+    PI->>Simple: configured API (tool result in context)
     Simple-->>PI: streamed final answer
+    Note over PI: next session_start resets the search tool gate
 
     Note over PI,BH: take_photo tool variant
     PI->>BH: GET /api/voice/take_photo

@@ -26,7 +26,7 @@ handler (or `/api/voice/*` endpoint) in `bridge.py`; `recall_person` /
 | `remember(fact)` | Stores a durable fact (≤300 codepoints, trimmed) into the `memories` table with `category=core`, `importance=0.7`. Mirrors bridge.py's `/api/voice/remember` HTTP endpoint, but called as a tool from inside the agent loop rather than as a side-channel POST. | `bridge.py::voice_remember` (`/api/voice/remember`) |
 | `recall_person(name)` | Reads up to 6 approved per-person facts from the `person:<id>` namespace in `brain.db` (case-insensitive name match), each ≤200 chars, pipe-joined. The pi runtime has no system-prompt-injection seam, so per-person memory is surfaced as a tool rather than bridge.py's injected `[Person memory]` block. | pi-native (#53) |
 | `remember_person(name, fact)` | Stores a ≤300-char fact about a named household member. Asks dotty-behaviour's `/api/voice/person_review_status` classifier first; facts about minors are held in `person_pending:<id>` for human review, adults go straight to `person:<id>`. | pi-native (#53) |
-| `think_hard(question)` | Direct POST to the configured OpenAI-compatible thinker route. Uses `VOICE_THINKER_MODEL` plus `DOTTY_PI_THINK_REASONING`, `DOTTY_PI_THINK_REASONING_EFFORT`, and `DOTTY_PI_THINK_MAX_TOKENS`; URL/key overrides are optional. | pi-native |
+| `think_hard()` | Direct POST of the current raw user prompt to the configured thinker route. `openai-responses` adds hosted `web_search` in isolation and blocks later tools for that pi session; `openai-completions` preserves the local-compatible path. Uses `VOICE_THINKER_MODEL` plus `DOTTY_PI_THINK_*`; URL/key overrides are optional. | pi-native |
 | `take_photo()` | GET to dotty-behaviour `/api/voice/take_photo` — returns the latest cached vision description if ≤30 s old, otherwise a "can't see" reply. v2 will actively fire the take_photo MCP and await fresh capture. | `dotty-behaviour::routes/voice.py` (lift of `bridge.py::_voice_tool_take_photo`) |
 | `play_song(name)` | Resolves free-form name against xiaozhi's `/xiaozhi/admin/songs` catalogue (60 s cache), then POSTs `/xiaozhi/admin/play-asset`. | `bridge.py::_voice_tool_play_song` |
 
@@ -87,7 +87,7 @@ dotty-pi-ext/
 ├── README.md             # this file
 ├── package.json          # pi extension manifest
 ├── src/
-│   ├── index.ts          # entry: registers the 7 tools, wires the agent_end logger
+│   ├── index.ts          # registers the 7 tools and wires the agent_end logger
 │   ├── tools/
 │   │   ├── memory_lookup.ts
 │   │   ├── remember.ts
@@ -99,7 +99,7 @@ dotty-pi-ext/
 │   └── lib/
 │       ├── brain_db.ts        # FTS5 client (sqlite3, opened against /root/.pi/memory/brain.db)
 │       ├── dotty_behaviour.ts # dotty-behaviour client (person-review classifier, take_photo)
-│       ├── llama_swap.ts      # OpenAI-compatible thinker client (historic filename)
+│       ├── llama_swap.ts      # dual Responses/Completions client (historic filename)
 │       ├── turn_logger.ts     # agent_end per-turn conversation auto-log
 │       └── xiaozhi_admin.ts   # admin-endpoint client (songs catalogue, play-asset, MCP dispatch)
 └── tests/                # per-tool contract tests against the bridge.py reference

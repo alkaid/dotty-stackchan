@@ -73,6 +73,7 @@ DOTTY_PI_BASE_URL=https://DOTTY_PI_BASE_URL_PLACEHOLDER/v1
 DOTTY_PI_API_KEY=sk-...
 DOTTY_PI_PROVIDER=sub2api
 DOTTY_PI_MODEL=dotty-simple
+DOTTY_PI_PROVIDER_API=openai-responses
 DOTTY_PI_SIMPLE_REASONING=false
 DOTTY_PI_THINK_REASONING=true
 DOTTY_PI_THINK_REASONING_EFFORT=high
@@ -83,9 +84,18 @@ VOICE_THINKER_URL=
 VOICE_THINKER_API_KEY=sk-...
 ```
 
-When `VOICE_THINKER_URL` is empty, the extension appends
-`/chat/completions` to `DOTTY_PI_BASE_URL`. The direct request uses
-`DOTTY_PI_THINK_REASONING`, `DOTTY_PI_THINK_REASONING_EFFORT`, and
+`DOTTY_PI_PROVIDER_API` controls both the outer pi loop and the direct
+`think_hard` call. With `openai-responses`, both paths use the Responses API,
+but hosted `web_search` is exposed only inside the isolated `think_hard`
+request. The outer loop deliberately keeps search separate from its private
+memory, camera, and state-mutating tools. `think_hard` receives only the
+current raw user prompt, and its first invocation blocks further tool calls
+until xiaozhi starts the next pi session. With `openai-completions`, the existing
+local-backend-compatible request remains unchanged. When
+`VOICE_THINKER_URL` is empty, the extension appends `/responses` or
+`/chat/completions` to `DOTTY_PI_BASE_URL` to match that setting. An explicit
+`VOICE_THINKER_URL` must include the complete endpoint path. The direct request
+also uses `DOTTY_PI_THINK_REASONING`, `DOTTY_PI_THINK_REASONING_EFFORT`, and
 `DOTTY_PI_THINK_MAX_TOKENS`.
 
 The dotty-pi RPC server owns the outer `pi --model ...` argument, so the

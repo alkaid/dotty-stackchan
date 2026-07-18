@@ -19,6 +19,7 @@ test("models renderer emits the configured split routes using pi's schema", () =
           DOTTY_PI_BASE_URL: "https://sub2api.example/v1/",
           DOTTY_PI_API_KEY: "test-key",
           DOTTY_PI_PROVIDER: "sub2api",
+          DOTTY_PI_PROVIDER_API: "openai-responses",
           DOTTY_PI_MODEL: "simple-id",
           VOICE_THINKER_MODEL: "think-id",
           DOTTY_PI_THINK_REASONING_EFFORT: "high",
@@ -31,6 +32,7 @@ test("models renderer emits the configured split routes using pi's schema", () =
     );
     const provider = config.providers.sub2api;
     assert.equal(provider.baseUrl, "https://sub2api.example/v1");
+    assert.equal(provider.api, "openai-responses");
     assert.equal(provider.apiKey, "test-key");
     assert.deepEqual(provider.models.map((model) => model.id), [
       "simple-id", "think-id",

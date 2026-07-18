@@ -14,14 +14,24 @@ import { recallPersonTool } from "./tools/recall_person.ts";
 import { rememberTool } from "./tools/remember.ts";
 import { rememberPersonTool } from "./tools/remember_person.ts";
 import { takePhotoTool } from "./tools/take_photo.ts";
-import { thinkHardTool } from "./tools/think_hard.ts";
+import {
+  createSearchIsolationGate,
+  createThinkHardTool,
+} from "./tools/think_hard.ts";
 
 export default function (pi: ExtensionAPI) {
+  const searchGate = createSearchIsolationGate();
+  pi.on("session_start", () => searchGate.startSession());
+  pi.on("before_agent_start", (event) => {
+    searchGate.setUserPrompt(event.prompt);
+  });
+  pi.on("tool_call", (event) => searchGate.beforeToolCall(event.toolName));
+
   pi.registerTool(memoryLookupTool);
   pi.registerTool(recallPersonTool);
   pi.registerTool(rememberTool);
   pi.registerTool(rememberPersonTool);
-  pi.registerTool(thinkHardTool);
+  pi.registerTool(createThinkHardTool(() => searchGate.getUserPrompt()));
   pi.registerTool(playSongTool);
   pi.registerTool(takePhotoTool);
   // Per-turn conversation auto-log. This is the live write path on the

@@ -149,6 +149,7 @@ DOTTY_PI_BASE_URL=https://SUB2API_DOMAIN_PLACEHOLDER/v1
 DOTTY_PI_API_KEY=sk-...
 DOTTY_PI_PROVIDER=sub2api
 DOTTY_PI_MODEL=dotty-simple
+DOTTY_PI_PROVIDER_API=openai-responses
 VOICE_THINKER_MODEL=dotty-think
 
 DOTTY_PI_SIMPLE_REASONING=false
@@ -158,7 +159,7 @@ DOTTY_PI_THINK_REASONING_EFFORT=high
 DOTTY_PI_THINK_MAX_TOKENS=4096
 ```
 
-普通对话使用 `DOTTY_PI_MODEL`。`think_hard` 使用 `VOICE_THINKER_MODEL`，并读取同一组 `DOTTY_PI_THINK_*` 参数。`VOICE_THINKER_URL` 留空时，接口地址自动使用 `DOTTY_PI_BASE_URL + /chat/completions`；`VOICE_THINKER_API_KEY` 留空时复用 `DOTTY_PI_API_KEY`。`personas/default.md` 只初始化第一个 Role；运行时 Role 保存于 `${DOTTY_BRIDGE_STATE_DIR}/state/roles.json`。
+普通对话使用 `DOTTY_PI_MODEL`。`think_hard` 使用 `VOICE_THINKER_MODEL`，并读取同一组 `DOTTY_PI_THINK_*` 参数。`DOTTY_PI_PROVIDER_API=openai-responses` 会让两条路径都使用 Responses API，但 hosted `web_search` 只存在于隔离的 `think_hard` 请求中；普通 agent loop 不会把搜索内容与家庭记忆、摄像头或状态写入工具放在同一个模型工具循环里，需要最新信息时应调用无参数的 `think_hard()`。搜索请求只接收本轮原始用户 prompt，不接受模型拼装的工具结果；搜索开始后，本 pi session 的后续工具调用全部阻断，直到 xiaozhi 通过 `/new_session` 开始下一轮。不支持 Responses 的本地后端继续使用 `openai-completions`。`VOICE_THINKER_URL` 留空时，接口地址按 API 类型自动使用 `DOTTY_PI_BASE_URL + /responses` 或 `DOTTY_PI_BASE_URL + /chat/completions`；显式配置时必须包含完整 endpoint。`VOICE_THINKER_API_KEY` 留空时复用 `DOTTY_PI_API_KEY`。`personas/default.md` 只初始化第一个 Role；运行时 Role 保存于 `${DOTTY_BRIDGE_STATE_DIR}/state/roles.json`。
 
 bridge 的 Role/Voice 卡片可运行时增删改并切换 Role、保存 ChatTTS/EdgeTTS 音色和试听；Role 通过 `voice_id` 选择音色。数据分别原子保存到 `roles.json` 与 `voices.json`。Configuration 面板继续管理模型、reasoning 和设备地址，保存到 `runtime-config.json`。dotty-pi 在下一次语音操作前加载激活 Role；RoleTTS 在每句话合成前加载该 Role 的音色。Kid Mode 只叠加安全 suffix/过滤，Smart Mode 不参与 Role 或音色选择。
 

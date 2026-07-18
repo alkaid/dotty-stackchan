@@ -65,7 +65,7 @@ Appdata layout on the Docker host:
 | `remember(fact)` | Stores a durable fact (≤300 codepoints) into `brain.db` with `category=core`, `importance=0.7`. |
 | `recall_person(name)` | Reads approved per-person facts from `brain.db`. |
 | `remember_person(name, fact)` | Stores a fact about a household member, with minor facts held for review. |
-| `think_hard(question)` | Direct POST using `VOICE_THINKER_MODEL` and `DOTTY_PI_THINK_*`; `VOICE_THINKER_URL` and key are optional overrides. |
+| `think_hard()` | Direct POST of the current raw user prompt using `VOICE_THINKER_MODEL` and `DOTTY_PI_THINK_*`; includes isolated hosted `web_search` in Responses mode. `VOICE_THINKER_URL` and key are optional overrides. |
 | `take_photo()` | GET to `dotty-behaviour /api/voice/take_photo` — returns latest cached vision description if ≤30 s old. |
 | `play_song(name)` | Resolves free-form name against `/xiaozhi/admin/songs` catalogue (60 s cache), then POSTs `/xiaozhi/admin/play-asset`. |
 
@@ -78,11 +78,20 @@ The outer pi loop and the `think_hard` escalation are deliberately separate:
 | Route | Config owner | Key env |
 |---|---|---|
 | Outer agent and simple route | dotty-pi container | `DOTTY_PI_PROVIDER`, `DOTTY_PI_MODEL`, active Bridge Role |
-| Rendered provider config | dotty-pi container | `DOTTY_PI_BASE_URL`, `DOTTY_PI_API_KEY`, `DOTTY_PI_SIMPLE_*`, `DOTTY_PI_THINK_*` |
-| `think_hard` direct call | dotty-pi extension | `VOICE_THINKER_URL`, `VOICE_THINKER_MODEL`, `VOICE_THINKER_API_KEY` |
+| Rendered provider config | dotty-pi container | `DOTTY_PI_BASE_URL`, `DOTTY_PI_API_KEY`, `DOTTY_PI_PROVIDER_API`, `DOTTY_PI_SIMPLE_*`, `DOTTY_PI_THINK_*` |
+| `think_hard` direct call | dotty-pi extension | `DOTTY_PI_PROVIDER_API`, `VOICE_THINKER_URL`, `VOICE_THINKER_MODEL`, `VOICE_THINKER_API_KEY` |
 
 `DOTTY_PI_PROVIDER` is also the provider key rendered into `models.json`.
 `DOTTY_PI_MODEL` is also the simple-route model id rendered into `models.json`.
+`DOTTY_PI_PROVIDER_API=openai-responses` switches both LLM routes to the
+Responses API. Hosted `web_search` is available only inside the isolated
+`think_hard` request; the outer loop does not combine web content with its
+private memory, camera, or state-mutating tools. Questions requiring current
+information should escalate through `think_hard`. Its search input is always
+the current raw user prompt, never model-composed tool output, and all later
+tool calls are blocked until the next pi session. The default
+`openai-completions` mode remains available for local backends that do not
+implement Responses or hosted tools.
 See [deployment.md](./deployment.md) for the deployment contract.
 
 ## The bridge — `bridge.py` (dashboard service)

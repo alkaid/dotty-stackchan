@@ -10,8 +10,16 @@ import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { buildThinkRequest, runThinkHard } from "../src/tools/think_hard.ts";
-import { TimeoutError } from "../src/lib/llama_swap.ts";
+import {
+  buildThinkRequest,
+  createSearchIsolationGate,
+  createThinkHardTool,
+  runThinkHard,
+} from "../src/tools/think_hard.ts";
+import {
+  configuredOpenAIApi,
+  TimeoutError,
+} from "../src/lib/llama_swap.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ORACLE = join(__dirname, "think_hard_oracle.py");
@@ -48,9 +56,72 @@ function testRequestBodies(): void {
   ];
   for (const q of questions) {
     const expected = callOracle(q);
-    const actual = buildThinkRequest(q);
+    const actual = buildThinkRequest(q, undefined, "openai-completions");
     assertEq(`buildThinkRequest(${JSON.stringify(q)})`, actual, expected);
   }
+}
+
+function testResponsesRequestBody(): void {
+  process.stdout.write("\nResponses request body:\n");
+  const originalReasoning = process.env.DOTTY_PI_THINK_REASONING;
+  const originalEffort = process.env.DOTTY_PI_THINK_REASONING_EFFORT;
+  const originalMaxTokens = process.env.DOTTY_PI_THINK_MAX_TOKENS;
+  process.env.DOTTY_PI_THINK_REASONING = "true";
+  process.env.DOTTY_PI_THINK_REASONING_EFFORT = "high";
+  process.env.DOTTY_PI_THINK_MAX_TOKENS = "1234";
+  try {
+    assertEq(
+      "uses native Responses fields and hosted search",
+      buildThinkRequest("Current news?", "compact-model", "openai-responses"),
+      {
+        model: "compact-model",
+        instructions:
+          "Answer the user's question concisely in 1-2 sentences. Be precise.",
+        input: "Current news?",
+        max_output_tokens: 1234,
+        stream: false,
+        store: false,
+        tools: [{ type: "web_search" }],
+        reasoning: { effort: "high" },
+      },
+    );
+  } finally {
+    if (originalReasoning === undefined) delete process.env.DOTTY_PI_THINK_REASONING;
+    else process.env.DOTTY_PI_THINK_REASONING = originalReasoning;
+    if (originalEffort === undefined) delete process.env.DOTTY_PI_THINK_REASONING_EFFORT;
+    else process.env.DOTTY_PI_THINK_REASONING_EFFORT = originalEffort;
+    if (originalMaxTokens === undefined) delete process.env.DOTTY_PI_THINK_MAX_TOKENS;
+    else process.env.DOTTY_PI_THINK_MAX_TOKENS = originalMaxTokens;
+  }
+}
+
+function testConfiguredApi(): void {
+  process.stdout.write("\nConfigured API selection:\n");
+  assertEq(
+    "recognizes configured API",
+    configuredOpenAIApi({ DOTTY_PI_PROVIDER_API: "openai-responses" }),
+    "openai-responses",
+  );
+}
+
+function testSearchIsolationGate(): void {
+  process.stdout.write("\nSearch isolation gate:\n");
+  const gate = createSearchIsolationGate(() => true);
+  gate.startSession();
+  gate.setUserPrompt(`  ${"q".repeat(2100)}  `);
+  assertEq("bounds raw user prompt", gate.getUserPrompt().length, 2000);
+  assertEq("allows local tools before search", gate.beforeToolCall("memory_lookup"), undefined);
+  assertEq("allows first think_hard", gate.beforeToolCall("think_hard"), undefined);
+  assertEq("blocks local tools after search", gate.beforeToolCall("take_photo"), {
+    block: true,
+    reason: "Local tools are disabled after web search for this session.",
+  });
+  assertEq("blocks repeated search", gate.beforeToolCall("think_hard"), {
+    block: true,
+    reason: "Local tools are disabled after web search for this session.",
+  });
+  gate.startSession();
+  assertEq("new session clears gate", gate.beforeToolCall("remember"), undefined);
 }
 
 // --- 2. Wrapper behaviour with mocked fetch ------------------------------
@@ -99,6 +170,7 @@ async function testSuccess(): Promise<void> {
     const got = await runThinkHard("What is the answer?", {
       url: "https://sub2api.example.test/v1/chat/completions",
       apiKey: "test-key",
+      api: "openai-completions",
     });
     assertEq("trims whitespace", got, "Pong.");
     assertEq("passes bearer token", calls[0].init.headers, {
@@ -107,6 +179,69 @@ async function testSuccess(): Promise<void> {
     });
   } finally {
     restore();
+  }
+}
+
+async function testResponsesSuccess(): Promise<void> {
+  process.stdout.write("\nResponses success path:\n");
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  const restore = installFetchMock({
+    json: {
+      output: [
+        { type: "web_search_call", status: "completed" },
+        {
+          type: "message",
+          content: [
+            { type: "output_text", text: "  Fresh answer.  ", annotations: [] },
+          ],
+        },
+      ],
+    },
+    calls,
+  });
+  try {
+    const got = await runThinkHard("What happened today?", {
+      url: "https://sub2api.example.test/v1/responses",
+      apiKey: "test-key",
+      api: "openai-responses",
+    });
+    assertEq("extracts output_text", got, "Fresh answer.");
+    assertEq("uses Responses endpoint", calls[0].url, "https://sub2api.example.test/v1/responses");
+    const body = JSON.parse(String(calls[0].init.body));
+    assertEq("sends hosted search", body.tools, [{ type: "web_search" }]);
+    assertEq("disables response storage", body.store, false);
+  } finally {
+    restore();
+  }
+}
+
+async function testToolUsesRawUserPrompt(): Promise<void> {
+  process.stdout.write("\nTool search-input isolation:\n");
+  const originalApi = process.env.DOTTY_PI_PROVIDER_API;
+  process.env.DOTTY_PI_PROVIDER_API = "openai-responses";
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  const restore = installFetchMock({
+    json: {
+      output: [{ type: "message", content: [{ type: "output_text", text: "Ok." }] }],
+    },
+    calls,
+  });
+  try {
+    const tool = createThinkHardTool(() => "raw current user question");
+    await tool.execute(
+      "call-1",
+      { question: "PRIVATE TOOL OUTPUT" } as never,
+      undefined,
+      undefined,
+      undefined,
+    );
+    const body = JSON.parse(String(calls[0].init.body));
+    assertEq("uses only captured raw prompt", body.input, "raw current user question");
+    assertEq("does not serialize model arguments", JSON.stringify(body).includes("PRIVATE"), false);
+  } finally {
+    restore();
+    if (originalApi === undefined) delete process.env.DOTTY_PI_PROVIDER_API;
+    else process.env.DOTTY_PI_PROVIDER_API = originalApi;
   }
 }
 
@@ -124,6 +259,7 @@ async function testSub2ApiKeyFallback(): Promise<void> {
   try {
     await runThinkHard("Q?", {
       url: "https://sub2api.example.test/v1/chat/completions",
+      api: "openai-completions",
     });
     assertEq("falls back to DOTTY_PI_API_KEY", calls[0].init.headers, {
       "content-type": "application/json",
@@ -156,11 +292,40 @@ async function testBaseUrlFallback(): Promise<void> {
     calls,
   });
   try {
-    await runThinkHard("Q?");
+    await runThinkHard("Q?", { api: "openai-completions" });
     assertEq(
       "derives chat-completions URL",
       calls[0].url,
       "https://sub2api.example.test/v1/chat/completions",
+    );
+  } finally {
+    restore();
+    if (originalThinkerUrl === undefined) delete process.env.VOICE_THINKER_URL;
+    else process.env.VOICE_THINKER_URL = originalThinkerUrl;
+    if (originalBaseUrl === undefined) delete process.env.DOTTY_PI_BASE_URL;
+    else process.env.DOTTY_PI_BASE_URL = originalBaseUrl;
+  }
+}
+
+async function testResponsesBaseUrlFallback(): Promise<void> {
+  process.stdout.write("\nResponses DOTTY_PI_BASE_URL fallback:\n");
+  const originalThinkerUrl = process.env.VOICE_THINKER_URL;
+  const originalBaseUrl = process.env.DOTTY_PI_BASE_URL;
+  process.env.VOICE_THINKER_URL = "";
+  process.env.DOTTY_PI_BASE_URL = "https://sub2api.example.test/v1/";
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  const restore = installFetchMock({
+    json: {
+      output: [{ type: "message", content: [{ type: "output_text", text: "Ok." }] }],
+    },
+    calls,
+  });
+  try {
+    await runThinkHard("Q?", { api: "openai-responses" });
+    assertEq(
+      "derives Responses URL",
+      calls[0].url,
+      "https://sub2api.example.test/v1/responses",
     );
   } finally {
     restore();
@@ -184,6 +349,12 @@ function testReasoningOverrides(): void {
     assertEq("enable_thinking", body.chat_template_kwargs, { enable_thinking: false });
     assertEq("reasoning_effort", body.reasoning_effort, "medium");
     assertEq("max_tokens", body.max_tokens, 1234);
+    const responseBody = buildThinkRequest(
+      "Q?",
+      undefined,
+      "openai-responses",
+    );
+    assertEq("Responses omits disabled reasoning", "reasoning" in responseBody, false);
   } finally {
     if (originalReasoning === undefined) delete process.env.DOTTY_PI_THINK_REASONING;
     else process.env.DOTTY_PI_THINK_REASONING = originalReasoning;
@@ -200,7 +371,7 @@ async function testLongResponseCap(): Promise<void> {
     json: { choices: [{ message: { content: "a".repeat(600) } }] },
   });
   try {
-    const got = await runThinkHard("Q?");
+    const got = await runThinkHard("Q?", { api: "openai-completions" });
     assertEq("length", got.length, 500);
     assertEq("contents", got, "a".repeat(500));
   } finally {
@@ -212,7 +383,7 @@ async function testTimeout(): Promise<void> {
   process.stdout.write("\nTimeout fallback:\n");
   const restore = installFetchMock({ throws: new TimeoutError("test") });
   try {
-    const got = await runThinkHard("Q?");
+    const got = await runThinkHard("Q?", { api: "openai-completions" });
     assertEq(
       "timeout reply",
       got,
@@ -227,7 +398,7 @@ async function testGenericError(): Promise<void> {
   process.stdout.write("\nGeneric error fallback:\n");
   const restore = installFetchMock({ throws: new Error("ECONNREFUSED") });
   try {
-    const got = await runThinkHard("Q?");
+    const got = await runThinkHard("Q?", { api: "openai-completions" });
     assertEq("generic-error reply", got, "(thinking failed)");
   } finally {
     restore();
@@ -238,7 +409,7 @@ async function testHttpError(): Promise<void> {
   process.stdout.write("\nNon-2xx HTTP response → generic-error fallback:\n");
   const restore = installFetchMock({ status: 503, json: { error: "busy" } });
   try {
-    const got = await runThinkHard("Q?");
+    const got = await runThinkHard("Q?", { api: "openai-completions" });
     assertEq("http-503 reply", got, "(thinking failed)");
   } finally {
     restore();
@@ -250,8 +421,11 @@ async function testHttpError(): Promise<void> {
 async function testLiveSmoke(): Promise<void> {
   const url = process.env.DOTTY_THINKER_URL;
   if (!url) {
+    const path = configuredOpenAIApi() === "openai-responses"
+      ? "responses"
+      : "chat/completions";
     process.stdout.write(
-      "\nLive smoke: SKIPPED (set DOTTY_THINKER_URL=https://DOTTY_PI_BASE_URL_PLACEHOLDER/v1/chat/completions to run).\n",
+      `\nLive smoke: SKIPPED (set DOTTY_THINKER_URL=https://DOTTY_PI_BASE_URL_PLACEHOLDER/v1/${path} to run).\n`,
     );
     return;
   }
@@ -271,10 +445,16 @@ async function testLiveSmoke(): Promise<void> {
 
 async function main(): Promise<void> {
   testRequestBodies();
+  testResponsesRequestBody();
+  testConfiguredApi();
+  testSearchIsolationGate();
   await testEmptyInput();
   await testSuccess();
+  await testResponsesSuccess();
+  await testToolUsesRawUserPrompt();
   await testSub2ApiKeyFallback();
   await testBaseUrlFallback();
+  await testResponsesBaseUrlFallback();
   testReasoningOverrides();
   await testLongResponseCap();
   await testTimeout();
