@@ -31,13 +31,24 @@ def load_active_voice(
 ) -> dict[str, Any]:
     default = fallback or DEFAULT_PROFILE
     try:
-        roles_state = _read_json(roles_path)
         voices_state = _read_json(voices_path)
+        voices = voices_state["voices"]
+        if not isinstance(voices, list):
+            return default
+    except (OSError, ValueError, KeyError, TypeError):
+        return default
+
+    voice_id = "default"
+    try:
+        roles_state = _read_json(roles_path)
         active_id = roles_state["active_role_id"]
         role = next(role for role in roles_state["roles"] if role["id"] == active_id)
-        voice_id = role.get("voice_id", "default")
-        return next(
-            voice for voice in voices_state["voices"] if voice["id"] == voice_id
-        )
+        voice_id = role.get("voice_id") or "default"
     except (OSError, ValueError, KeyError, TypeError, StopIteration):
-        return default
+        pass
+
+    for candidate_id in dict.fromkeys((voice_id, "default")):
+        for voice in voices:
+            if isinstance(voice, dict) and voice.get("id") == candidate_id:
+                return voice
+    return default

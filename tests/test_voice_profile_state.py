@@ -36,6 +36,52 @@ class VoiceProfileStateTests(unittest.TestCase):
             voice = profile_state.load_active_voice(str(roles), str(voices))
             self.assertEqual(voice["id"], "edge-au")
 
+    def test_missing_role_store_uses_saved_default_voice(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="dotty-profile-") as tmp:
+            root = Path(tmp)
+            voices = root / "voices.json"
+            voices.write_text(json.dumps({
+                "voices": [{
+                    "id": "default",
+                    "name": "Louder Xiaoxiao",
+                    "provider": "edge",
+                    "config": {
+                        "voice": "zh-CN-XiaoxiaoNeural",
+                        "volume": "+40%",
+                    },
+                }],
+            }))
+
+            voice = profile_state.load_active_voice(
+                str(root / "missing-roles.json"), str(voices),
+            )
+
+            self.assertEqual(voice["name"], "Louder Xiaoxiao")
+            self.assertEqual(voice["config"]["volume"], "+40%")
+
+    def test_missing_assigned_voice_uses_saved_default_voice(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="dotty-profile-") as tmp:
+            root = Path(tmp)
+            roles = root / "roles.json"
+            voices = root / "voices.json"
+            roles.write_text(json.dumps({
+                "active_role_id": "guide",
+                "roles": [{"id": "guide", "voice_id": "deleted-voice"}],
+            }))
+            voices.write_text(json.dumps({
+                "voices": [{
+                    "id": "default",
+                    "name": "Saved default",
+                    "provider": "edge",
+                    "config": {"volume": "+40%"},
+                }],
+            }))
+
+            voice = profile_state.load_active_voice(str(roles), str(voices))
+
+            self.assertEqual(voice["id"], "default")
+            self.assertEqual(voice["config"]["volume"], "+40%")
+
     def test_missing_or_invalid_state_uses_default(self) -> None:
         voice = profile_state.load_active_voice("/missing/roles", "/missing/voices")
         self.assertEqual(voice["id"], "default")
