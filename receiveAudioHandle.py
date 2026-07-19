@@ -1268,6 +1268,10 @@ async def no_voice_close_connect(conn: "ConnectionHandler", have_voice):
     if have_voice:
         conn.last_activity_time = time.time() * 1000
         return
+    # A Dotty device's WebSocket also carries dashboard commands. Ending an
+    # inactive voice turn must not tear down that persistent control channel.
+    if getattr(conn, "keep_device_connection_alive", False):
+        return
     if conn.last_activity_time > 0.0:
         no_voice_time = time.time() * 1000 - conn.last_activity_time
         close_connection_no_voice_time = int(

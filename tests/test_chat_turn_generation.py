@@ -1,5 +1,6 @@
 """Regression coverage for abort state leaking into a replacement voice turn."""
 
+import asyncio
 import importlib.util
 import pathlib
 import sys
@@ -113,6 +114,23 @@ class _Conn:
         pass
 
 
+class _IdleConn:
+    def __init__(self, keep_alive: bool):
+        self.keep_device_connection_alive = keep_alive
+        self.last_activity_time = 1
+        self.close_after_chat = False
+        self.client_abort = True
+        self.config = {
+            "close_connection_no_voice_time": 0,
+            "end_prompt": {"enable": False},
+        }
+        self.logger = _Logger()
+        self.closed = False
+
+    async def close(self):
+        self.closed = True
+
+
 class TestChatTurnGeneration(unittest.TestCase):
     def test_replacement_turn_gets_a_new_generation_without_reviving_old_turn(self):
         conn = _Conn()
@@ -132,8 +150,28 @@ class TestChatTurnGeneration(unittest.TestCase):
         self.assertRegex(conn.executor.calls[1][4], r"^[0-9a-f]{12}$")
         self.assertNotEqual(conn.executor.calls[0][4], conn.executor.calls[1][4])
 
+    def test_idle_voice_timeout_keeps_dotty_control_channel_open(self):
+        persistent = _IdleConn(keep_alive=True)
+        asyncio.run(_receive_audio.no_voice_close_connect(persistent, have_voice=False))
+
+        self.assertFalse(persistent.close_after_chat)
+        self.assertFalse(persistent.closed)
+
+        legacy = _IdleConn(keep_alive=False)
+        asyncio.run(_receive_audio.no_voice_close_connect(legacy, have_voice=False))
+
+        self.assertTrue(legacy.close_after_chat)
+        self.assertTrue(legacy.closed)
+
     def test_connection_patch_has_fail_closed_upstream_anchors(self):
-        fixture = '''    def chat(self, query, depth=0):
+        fixture = '''        self.timeout_seconds = (
+                int(self.config.get("close_connection_no_voice_time", 120)) + 60
+        )  # 在原来第一道关闭的基础上加60秒，进行二道关闭
+        self.timeout_task = None
+    async def _check_timeout(self):
+        """检查连接超时"""
+        try:
+    def chat(self, query, depth=0):
         # 保存当前任务的sentence_id到局部变量，避免被新任务覆盖
         current_sentence_id = None
             self.sentence_id = current_sentence_id  # 更新共享属性
@@ -159,6 +197,8 @@ class TestChatTurnGeneration(unittest.TestCase):
 
         self.assertIn("turn_generation=None", patched)
         self.assertIn("turn_id=None", patched)
+        self.assertIn("self.keep_device_connection_alive", patched)
+        self.assertIn("idle timeout disabled", patched)
         self.assertIn('llm_kwargs["turn_id"] = turn_id', patched)
         self.assertIn("Skipping stale chat turn", patched)
         self.assertIn("self.client_abort = False", patched)
@@ -166,7 +206,7 @@ class TestChatTurnGeneration(unittest.TestCase):
         self.assertIn("turn_generation=turn_generation", patched)
 
     def test_connection_patch_rejects_upstream_drift(self):
-        with self.assertRaisesRegex(RuntimeError, "chat signature"):
+        with self.assertRaisesRegex(RuntimeError, "persistent device connection flag"):
             _connection_patch.patch_source("def unrelated(): pass\n")
 
 

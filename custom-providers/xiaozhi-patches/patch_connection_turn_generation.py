@@ -26,6 +26,43 @@ def _replace_once(source: str, old: str, new: str, label: str) -> str:
 def patch_source(source: str) -> str:
     source = _replace_once(
         source,
+        '''        self.timeout_seconds = (
+                int(self.config.get("close_connection_no_voice_time", 120)) + 60
+        )  # 在原来第一道关闭的基础上加60秒，进行二道关闭
+        self.timeout_task = None
+''',
+        '''        self.timeout_seconds = (
+                int(self.config.get("close_connection_no_voice_time", 120)) + 60
+        )  # 在原来第一道关闭的基础上加60秒，进行二道关闭
+        # Dotty keeps an idle device channel open for dashboard commands.
+        # WebSocket ping/pong already detects dead peers; voice inactivity is
+        # not evidence that the physical robot is offline.
+        self.keep_device_connection_alive = self.config.get(
+            "keep_device_connection_alive", True
+        )
+        self.timeout_task = None
+''',
+        "persistent device connection flag",
+    )
+    source = _replace_once(
+        source,
+        '''    async def _check_timeout(self):
+        """检查连接超时"""
+        try:
+''',
+        '''    async def _check_timeout(self):
+        """检查连接超时"""
+        if self.keep_device_connection_alive:
+            self.logger.bind(tag=TAG).info(
+                "Dotty persistent device connection enabled; idle timeout disabled"
+            )
+            return
+        try:
+''',
+        "persistent device connection timeout gate",
+    )
+    source = _replace_once(
+        source,
         '''    def chat(self, query, depth=0):
         # 保存当前任务的sentence_id到局部变量，避免被新任务覆盖
         current_sentence_id = None
