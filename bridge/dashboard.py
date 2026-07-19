@@ -2316,6 +2316,19 @@ def _disk_usage_root() -> tuple[int, int] | None:
         return None
 
 
+def _physical_perception_state(
+    state: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Exclude runtime probes that share the perception event endpoint."""
+    return {
+        device_id: device_state
+        for device_id, device_state in state.items()
+        if device_id
+        and device_id != "unknown"
+        and not device_id.startswith("runtime-")
+    }
+
+
 # Single-page redesign: compact host dots (header placement) + system pills
 # (footer placement). One endpoint, two placements, polled at the same 10s
 # cadence.
@@ -2354,6 +2367,7 @@ async def status_strip(request: Request, placement: str = "header") -> Any:
                 pstate = psg() or {}
             except Exception:
                 pstate = {}
+            pstate = _physical_perception_state(pstate)
             stale_devs = [
                 did for did, s in pstate.items()
                 if s and s.get("sensor_stale")
@@ -2550,6 +2564,7 @@ async def host_detail(request: Request, slug: str) -> Any:
                 pstate = psg() or {}
             except Exception:
                 pstate = {}
+            pstate = _physical_perception_state(pstate)
             if pstate:
                 stale = [
                     did for did, s in pstate.items()

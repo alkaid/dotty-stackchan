@@ -20,7 +20,7 @@ import json
 import unittest
 from contextlib import asynccontextmanager
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 
 # Same env redirects as test_bridge_routes.py — kid/smart-mode state dirs
@@ -92,6 +92,44 @@ class CSRFCookieIssuanceTests(unittest.TestCase):
         # What MUST hold: /health remains accessible without a token.
         r = self.client.get("/health")
         self.assertEqual(r.status_code, 200)
+
+
+class DashboardRobotStatusTests(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(bridge_app.app)
+        self.old_perception_getter = dashboard_mod._state.get(
+            "perception_state_getter"
+        )
+
+    def tearDown(self):
+        dashboard_mod._state["perception_state_getter"] = (
+            self.old_perception_getter
+        )
+
+    def test_runtime_sentinel_does_not_mark_online_robot_stale(self):
+        dashboard_mod._state["perception_state_getter"] = lambda: {
+            "runtime-sound-guard": {
+                "sensor_stale": True,
+                "sensor_age_s": 55_000,
+            },
+            "1c:db:d4:ba:55:70": {
+                "sensor_stale": False,
+                "sensor_age_s": 10,
+            },
+        }
+        with (
+            patch.object(dashboard_mod, "_stackchan_last_seen", return_value=None),
+            patch.object(
+                dashboard_mod,
+                "_tcp_reachable",
+                new=AsyncMock(return_value=True),
+            ),
+        ):
+            response = self.client.get("/ui/status-strip?placement=header")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("robot: online", response.text)
+        self.assertNotIn("perception sensors stale", response.text)
 
 class CSRFEnforcementTests(unittest.TestCase):
     """POST to /ui/actions/* must require a matching X-CSRF-Token."""
