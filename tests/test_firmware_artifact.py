@@ -71,3 +71,19 @@ def test_makefile_forwards_ota_url_and_reconfigures_before_build() -> None:
     assert '-e XIAOZHI_PUBLIC_OTA_BASE_URL="$$ota_base_url"' in makefile
     assert "idf.py reconfigure && idf.py build" in makefile
     assert "scripts/verify_firmware_artifact.py" in makefile
+
+
+def test_windows_firmware_target_builds_without_bumping_version() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    target = makefile.split("firmware-windows:", 1)[1].split("\n\n", 1)[0]
+
+    assert "scripts/build_firmware_windows.ps1" in target
+    assert "bump_firmware_version.py" not in target
+
+    script = (ROOT / "scripts" / "build_firmware_windows.ps1").read_text(
+        encoding="utf-8"
+    )
+    assert "XIAOZHI_PUBLIC_OTA_BASE_URL" in script
+    assert "verify_firmware_artifact.py" in script
+    assert '"reconfigure"' in script
+    assert '"build"' in script

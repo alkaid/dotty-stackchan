@@ -35,7 +35,7 @@ RESET  := \033[0m
 DL_FILE = dl_file() { if curl -fL --retry 3 --retry-delay 1 --progress-bar -o "$$2" "$$1"; then _sz=$$(wc -c < "$$2" 2>/dev/null || echo 0); if [ "$$_sz" -lt 100 ]; then echo -e "  $(RED)$$2: only $$_sz bytes — treating as a failed download$(RESET)"; rm -f "$$2"; return 1; fi; else echo -e "  $(RED)Failed to download $$1$(RESET)"; rm -f "$$2"; return 1; fi; }
 
 # ── Targets ──────────────────────────────────────────────────────────
-.PHONY: help setup xiaozhi-base fetch-models doctor up simulator simulator-only down logs status latency-report voice-list voice-install sbom verify-firmware firmware-ota test test-node lint check _preflight-compose _preflight-rendered
+.PHONY: help setup xiaozhi-base fetch-models doctor up simulator simulator-only down logs status latency-report voice-list voice-install sbom verify-firmware firmware-ota firmware-windows test test-node lint check _preflight-compose _preflight-rendered
 
 FIRMWARE_OTA_MODEL ?= m5stack-stack-chan
 
@@ -608,6 +608,11 @@ firmware-ota: ## Bump patch version, build firmware, and publish it for OTA
 	 install -m 0644 firmware/firmware/build/stack-chan.bin "$$artifact"; \
 	 echo "Published OTA firmware: $$artifact"; \
 	 sha256sum "$$artifact"
+
+firmware-windows: ## Build firmware with Windows ESP-IDF without bumping its version
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build_firmware_windows.ps1 \
+	  -OtaBaseUrl "$(XIAOZHI_PUBLIC_OTA_BASE_URL)" \
+	  -IdfPath "$(IDF_PATH)"
 
 status: _preflight-compose _preflight-rendered ## Show container status + bridge / dotty-behaviour health
 	@docker compose ps
